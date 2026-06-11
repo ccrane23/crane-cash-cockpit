@@ -1,26 +1,40 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* Crane Cash Cockpit — dark editorial investor cockpit.
+   Bloomberg Terminal meets Lux Palate. */
+@theme {
+  --color-bg: #0a0a0a;
+  --color-surface: #161616;
+  --color-border: #262626;
+
+  --color-text: #f5f5f5;
+  --color-text-secondary: #909090;
+  --color-text-tertiary: #5a5a5a;
+
+  --color-positive: #14a89e;
+  --color-negative: #e85850;
+  --color-gold: #c9a96e;
+
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
+    monospace;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  background: var(--color-bg);
+  color-scheme: dark;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-mono);
+}
+
+/* Uppercase letter-spaced mini-label for section headers. */
+.mini-label {
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.6875rem;
+  color: var(--color-text-tertiary);
 }
