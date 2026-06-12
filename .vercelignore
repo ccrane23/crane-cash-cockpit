@@ -1,0 +1,4 @@
+# The bridge runs on the Actual host (Hetzner), not on Vercel. Keep it out of
+# the Next.js deployment so Vercel never tries to build it or its @actual-app/api
+# dependency (the SDK that fails in Vercel's serverless runtime).
+actual-bridge/

@@ -1,0 +1,50 @@
+# Runs on the Actual host (Hetzner), NOT on Vercel.
+#
+# Secrets are interpolated from an .env file sitting NEXT TO this compose file on
+# the server (gitignored, never committed). Required keys:
+#   BRIDGE_BEARER_TOKEN, ACTUAL_PASSWORD, ACTUAL_SYNC_ID
+#
+# The `actual` service is a faithful 1:1 replica of the container that was
+# originally started via raw `docker run` (same image, mount, port, env, restart
+# policy). The budget data lives in the /root/actual-data bind mount, so moving
+# to compose preserves it.
+
+services:
+  actual:
+    image: actualbudget/actual-server:latest
+    container_name: actual
+    restart: unless-stopped
+    ports:
+      - "5006:5006"
+    volumes:
+      - /root/actual-data:/data
+    environment:
+      - ACTUAL_HTTPS_KEY=/data/certs/cert.key
+      - ACTUAL_HTTPS_CERT=/data/certs/cert.crt
+      - NODE_ENV=production
+
+  actual-bridge:
+    build: ./actual-bridge
+    container_name: actual-bridge
+    restart: unless-stopped
+    depends_on:
+      - actual
+    ports:
+      - "5007:5007"
+    environment:
+      - PORT=5007
+      # Fail fast at `up` time if any secret is missing from the server .env.
+      - BRIDGE_BEARER_TOKEN=${BRIDGE_BEARER_TOKEN:?set BRIDGE_BEARER_TOKEN in the server .env}
+      - ACTUAL_SERVER_URL=https://cranecashapp.com:5006
+      - ACTUAL_PASSWORD=${ACTUAL_PASSWORD:?set ACTUAL_PASSWORD in the server .env}
+      - ACTUAL_SYNC_ID=${ACTUAL_SYNC_ID:?set ACTUAL_SYNC_ID in the server .env}
+      - DATA_DIR=/data
+      # In-process TLS termination using the host's Let's Encrypt cert, mounted ro.
+      - TLS_CERT=/etc/letsencrypt/live/cranecashapp.com/fullchain.pem
+      - TLS_KEY=/etc/letsencrypt/live/cranecashapp.com/privkey.pem
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - actual-bridge-data:/data
+
+volumes:
+  actual-bridge-data:

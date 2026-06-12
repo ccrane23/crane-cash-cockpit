@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // The bridge is a separate plain-JS service deployed to Hetzner, not Vercel.
+    "actual-bridge/**",
   ]),
 ]);
 
