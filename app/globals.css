@@ -38,3 +38,25 @@ body {
   font-size: 0.6875rem;
   color: var(--color-text-tertiary);
 }
+
+/* Drill-down drawer transitions. */
+@keyframes ccc-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes ccc-slide-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+.ccc-fade-in {
+  animation: ccc-fade-in 0.15s ease-out;
+}
+.ccc-slide-in {
+  animation: ccc-slide-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ccc-fade-in,
+  .ccc-slide-in {
+    animation: none;
+  }
+}

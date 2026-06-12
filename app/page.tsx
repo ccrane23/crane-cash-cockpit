@@ -1,25 +1,36 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth";
-import { getAccounts, describeError, type Account } from "@/lib/actual";
+import {
+  getAccounts,
+  getTransactions,
+  describeError,
+  type Account,
+  type Transaction,
+} from "@/lib/actual";
+import {
+  computeSummary,
+  computeCategoryBreakdown,
+  computeHistory,
+  recentActivity,
+  computeUpcomingBills,
+  currentMonthKey,
+  recentMonthKeys,
+  monthKey,
+} from "@/lib/finance";
+import type { DashboardData } from "./dashboard/model";
+import Dashboard from "./dashboard/Dashboard";
 import SignOutButton from "./sign-out-button";
 
 // Sensitive financial data — never cache, always render per request.
 export const dynamic = "force-dynamic";
 
-const currency = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-});
+// We pull a rolling 12 months so the historical chart and trailing-average
+// variance have data to work with.
+const HISTORY_MONTHS = 12;
 
-function formatBalance(value: number): string {
-  return currency.format(value);
-}
-
-function balanceColor(value: number): string {
-  if (value > 0) return "var(--color-positive)";
-  if (value < 0) return "var(--color-negative)";
-  return "var(--color-text-secondary)";
+function firstDayOf(monthKey: string): string {
+  return `${monthKey}-01`;
 }
 
 export default async function Home() {
@@ -29,20 +40,52 @@ export default async function Home() {
     redirect("/login");
   }
 
+  const month = currentMonthKey();
+  const months = recentMonthKeys(month, HISTORY_MONTHS);
+  const start = firstDayOf(months[0]);
+
+  // Fetch independently: transactions drive almost everything, so a flaky
+  // /accounts (which only feeds cash position) must not blank the dashboard.
+  const [accountsResult, transactionsResult] = await Promise.allSettled([
+    getAccounts(),
+    getTransactions({ start }),
+  ]);
+
   let accounts: Account[] | null = null;
+  if (accountsResult.status === "fulfilled") {
+    accounts = accountsResult.value;
+  } else {
+    console.error("Failed to load accounts:", describeError(accountsResult.reason));
+  }
+
+  let transactions: Transaction[] | null = null;
   let error: string | null = null;
-  try {
-    accounts = await getAccounts();
-  } catch (err) {
+  if (transactionsResult.status === "fulfilled") {
+    transactions = transactionsResult.value;
+  } else {
     console.error(
-      "Failed to load accounts from Actual:",
-      describeError(err),
+      "Failed to load transactions:",
+      describeError(transactionsResult.reason),
     );
     error = "Could not reach the Actual budget server.";
   }
 
-  const open = accounts?.filter((a) => !a.closed) ?? [];
-  const total = open.reduce((sum, a) => sum + a.balance, 0);
+  let data: DashboardData | null = null;
+  if (transactions) {
+    data = {
+      summary: computeSummary(accounts, transactions, month),
+      month,
+      categories: computeCategoryBreakdown(transactions, month),
+      history: computeHistory(transactions, months),
+      recent: recentActivity(transactions),
+      bills: computeUpcomingBills(transactions),
+      accountsAvailable: accounts !== null,
+      accounts: (accounts ?? []).filter((a) => !a.closed),
+      monthTransactions: transactions
+        .filter((t) => monthKey(t.date) === month)
+        .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)),
+    };
+  }
 
   return (
     <main className="flex flex-1 flex-col p-6 sm:p-10">
@@ -50,57 +93,21 @@ export default async function Home() {
         <div>
           <p className="mini-label">Crane Cash Cockpit</p>
           <h1 className="mt-1 text-xl font-medium text-[var(--color-text)]">
-            Accounts
+            Dashboard
           </h1>
         </div>
-        {accounts && (
-          <div className="text-right">
-            <p className="mini-label">Total</p>
-            <p
-              className="mt-1 text-xl"
-              style={{ color: balanceColor(total) }}
-            >
-              {formatBalance(total)}
-            </p>
-          </div>
-        )}
+        <SignOutButton />
       </header>
 
       {error ? (
         <p className="mt-8 text-[var(--color-negative)]">{error}</p>
-      ) : open.length === 0 ? (
-        <p className="mt-8 text-[var(--color-text-secondary)]">
-          No accounts found.
-        </p>
+      ) : data ? (
+        <div className="mt-6">
+          <Dashboard data={data} />
+        </div>
       ) : (
-        <ul className="mt-2">
-          {open.map((account) => (
-            <li
-              key={account.id}
-              className="flex items-baseline justify-between gap-4 border-b border-[var(--color-border)] py-4"
-            >
-              <span className="text-[var(--color-text)]">
-                {account.name}
-                {account.offBudget && (
-                  <span className="ml-2 text-[var(--color-text-tertiary)]">
-                    off budget
-                  </span>
-                )}
-              </span>
-              <span
-                className="tabular-nums"
-                style={{ color: balanceColor(account.balance) }}
-              >
-                {formatBalance(account.balance)}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <p className="mt-8 text-[var(--color-text-secondary)]">Loading…</p>
       )}
-
-      <footer className="mt-auto pt-10 text-sm">
-        <SignOutButton />
-      </footer>
     </main>
   );
 }
