@@ -3,7 +3,7 @@ import { createServer as createHttpsServer } from "https";
 import { createServer as createHttpServer } from "http";
 import { timingSafeEqual } from "crypto";
 import express from "express";
-import { getAccounts } from "./actual.js";
+import { getAccounts, getTransactions } from "./actual.js";
 
 const PORT = Number(process.env.PORT || 5007);
 
@@ -50,6 +50,15 @@ app.get("/accounts", requireBearer, async (_req, res) => {
     res.json({ accounts });
   } catch (err) {
     console.error("[bridge] /accounts failed:", err);
+    res.status(502).json({ error: "actual_unreachable" });
+  }
+});app.get("/transactions", requireBearer, async (req, res) => {
+  try {
+    const { start, end } = req.query;
+    const transactions = await getTransactions(start, end);
+    res.json({ transactions });
+  } catch (err) {
+    console.error("[bridge] /transactions failed:", err);
     res.status(502).json({ error: "actual_unreachable" });
   }
 });

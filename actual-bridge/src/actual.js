@@ -80,3 +80,53 @@ export function getAccounts() {
     );
   });
 }
+
+/**
+ * @param {string} [startDate]  ISO date 'YYYY-MM-DD', inclusive. Defaults to 90 days ago.
+ * @param {string} [endDate]    ISO date 'YYYY-MM-DD', inclusive. Defaults to today.
+ * @returns {Promise<object[]>}
+ */
+export function getTransactions(startDate, endDate) {
+  return serialize(async () => {
+    await ensureReady();
+    await api.sync();
+
+    const end = endDate || new Date().toISOString().slice(0, 10);
+    const start =
+      startDate ||
+      new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+    // Build id->name lookups so the dashboard gets readable labels, not UUIDs.
+    const accounts = await api.getAccounts();
+    const categories = await api.getCategories();
+    const payees = await api.getPayees();
+    const acctName = new Map(accounts.map((a) => [a.id, a.name]));
+    const catName = new Map(categories.map((c) => [c.id, c.name]));
+    const payeeName = new Map(payees.map((p) => [p.id, p.name]));
+
+    // Pull transactions per account, then flatten.
+    const all = [];
+    for (const a of accounts) {
+      const txns = await api.getTransactions(a.id, start, end);
+      for (const t of txns) {
+        all.push({
+          id: t.id,
+          date: t.date,
+          amount: api.utils.integerToAmount(t.amount),
+          account: acctName.get(a.id) || a.id,
+          accountId: a.id,
+          payee: payeeName.get(t.payee) || null,
+          category: catName.get(t.category) || null,
+          categoryId: t.category || null,
+          notes: t.notes || null,
+          cleared: Boolean(t.cleared),
+          transfer: Boolean(t.transfer_id),
+        });
+      }
+    }
+
+    // Newest first.
+    all.sort((x, y) => (x.date < y.date ? 1 : x.date > y.date ? -1 : 0));
+    return all;
+  });
+}
