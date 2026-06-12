@@ -1,8 +1,12 @@
-# Start slim. @actual-app/api pulls in better-sqlite3 (native). If a prebuilt
-# binary isn't available for this base and npm tries to compile from source, the
-# build will fail on missing python3/make/g++. If that happens, change the base
-# image to the full `node:20` (which bundles build tools) and note it here.
-FROM node:20-slim
+# Use the full node:20 base, NOT node:20-slim.
+#
+# @actual-app/api pulls in better-sqlite3 (native). On node:20-slim there's no
+# prebuilt binary for this combination, so npm compiles it from source and the
+# build fails with "gyp ERR! find Python / Could not find any Python installation"
+# — slim ships no Python or build toolchain. The full node:20 image bundles
+# Python + make + g++, so the native compile just works. We chose the larger base
+# over adding apt-get build deps to keep the Dockerfile simple. Do not relitigate.
+FROM node:20
 
 WORKDIR /app
 
