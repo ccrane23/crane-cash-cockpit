@@ -14,16 +14,6 @@ type Card = {
 function cards(summary: Summary): Card[] {
   return [
     {
-      key: "cash",
-      label: "Cash Position",
-      value: summary.cashPosition,
-      color: "var(--color-gold)",
-      hint:
-        summary.cashPosition === null
-          ? "Accounts unavailable"
-          : "On-budget accounts",
-    },
-    {
       key: "spent",
       label: "Spent MTD",
       value: summary.spentMTD,
@@ -55,7 +45,7 @@ export default function StatCards({
   onSelect?: (key: StatKey) => void;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-px bg-[var(--color-border)] sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid grid-cols-1 gap-px bg-[var(--color-border)] sm:grid-cols-3">
       {cards(summary).map((c) => (
         <button
           key={c.key}

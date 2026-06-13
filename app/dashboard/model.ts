@@ -9,9 +9,12 @@ import type {
   UpcomingBill,
 } from "@/lib/finance";
 import type { Account, Transaction } from "@/lib/actual";
+import type { SafeToSpend } from "@/lib/safe-to-spend";
 
 export type DashboardData = {
   summary: Summary;
+  /** Free-to-spend view; null when the TD checking balance is unavailable. */
+  safeToSpend: SafeToSpend | null;
   month: string; // "YYYY-MM" the MTD figures cover
   categories: CategoryRow[];
   history: HistorySeries;

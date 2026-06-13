@@ -6,6 +6,7 @@ import {
   getTransactions,
   getSyncStatus,
   getGroups,
+  findTdCheckingBalance,
   describeError,
   type Account,
   type Transaction,
@@ -22,6 +23,7 @@ import {
   recentMonthKeys,
   monthKey,
 } from "@/lib/finance";
+import { computeSafeToSpend } from "@/lib/safe-to-spend";
 import { nowMs } from "@/lib/format";
 import type { DashboardData } from "./dashboard/model";
 import Dashboard from "./dashboard/Dashboard";
@@ -99,8 +101,13 @@ export default async function Home() {
 
   let data: DashboardData | null = null;
   if (transactions) {
+    // Safe-to-Spend keys off the TD checking balance; null-degrade if the
+    // account (or all of /accounts) is unavailable this request.
+    const tdBalance = accounts ? findTdCheckingBalance(accounts) : null;
+
     data = {
       summary: computeSummary(accounts, transactions, month),
+      safeToSpend: tdBalance !== null ? computeSafeToSpend(tdBalance) : null,
       month,
       categories: computeCategoryBreakdown(transactions, month),
       history: computeHistory(transactions, months, groups),

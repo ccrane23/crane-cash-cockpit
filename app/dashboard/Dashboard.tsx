@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { DashboardData, Selection } from "./model";
 import { formatMonthLabel } from "@/lib/format";
+import SafeToSpend from "./SafeToSpend";
 import StatCards from "./StatCards";
 import CategoriesTable from "./CategoriesTable";
 import HistoryChart from "./HistoryChart";
@@ -21,6 +22,20 @@ export default function Dashboard({ data }: { data: DashboardData }) {
   return (
     <div className="flex flex-col gap-px">
       <section>
+        <div className="mb-px flex items-baseline justify-between px-1 pb-3">
+          <p className="mini-label">Safe to spend</p>
+        </div>
+        {data.safeToSpend ? (
+          <SafeToSpend data={data.safeToSpend} />
+        ) : (
+          <p className="bg-[var(--color-surface)] p-5 text-sm text-[var(--color-text-tertiary)]">
+            TD checking balance is unavailable, so safe-to-spend can’t be shown.
+            Transaction-based figures are unaffected.
+          </p>
+        )}
+      </section>
+
+      <section className="mt-6">
         <div className="mb-px flex items-baseline justify-between px-1 pb-3">
           <p className="mini-label">Month to date</p>
           <p className="mini-label">{formatMonthLabel(data.month)}</p>

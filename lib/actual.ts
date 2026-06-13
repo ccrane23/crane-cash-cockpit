@@ -70,6 +70,17 @@ function requireEnv(name: string): string {
   return v;
 }
 
+// Locate the TD Business Simple Checking (…8793) balance in the accounts list
+// for the Safe-to-Spend calculation. Returns null if it isn't present (e.g.
+// /accounts was unreachable this request).
+export function findTdCheckingBalance(accounts: Account[]): number | null {
+  const match = accounts.find((a) => {
+    const n = a.name.toLowerCase();
+    return n.includes("8793") || n.includes("td business simple");
+  });
+  return match ? match.balance : null;
+}
+
 export async function getAccounts(): Promise<Account[]> {
   const baseUrl = requireEnv("BRIDGE_URL"); // e.g. https://cranecashapp.com:5007
   const token = requireEnv("BRIDGE_BEARER_TOKEN");
