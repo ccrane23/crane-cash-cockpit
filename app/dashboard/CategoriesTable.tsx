@@ -1,5 +1,9 @@
+import { useState } from "react";
 import type { CategoryRow } from "@/lib/finance";
 import { formatCurrency } from "@/lib/format";
+
+// Rows arrive sorted by spend (highest first); collapsed we show only this many.
+const COLLAPSED_COUNT = 10;
 
 function pct(value: number | null): string {
   if (value === null) return "—";
@@ -23,6 +27,8 @@ export default function CategoriesTable({
   rows: CategoryRow[];
   onSelect?: (categoryId: string, category: string) => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
+
   if (rows.length === 0) {
     return (
       <p className="bg-[var(--color-surface)] p-5 text-sm text-[var(--color-text-secondary)]">
@@ -31,11 +37,15 @@ export default function CategoriesTable({
     );
   }
 
-  // Bar width is relative to the largest of actual/baseline across all rows.
+  // Bar width is relative to the largest of actual/baseline across all rows, so
+  // bars stay comparable whether or not the list is expanded.
   const max = Math.max(
     ...rows.map((r) => Math.max(r.actual, r.baseline)),
     1,
   );
+
+  const canCollapse = rows.length > COLLAPSED_COUNT;
+  const visible = expanded ? rows : rows.slice(0, COLLAPSED_COUNT);
 
   return (
     <div className="bg-[var(--color-surface)]">
@@ -45,7 +55,7 @@ export default function CategoriesTable({
         <span className="mini-label text-right">Variance</span>
       </div>
       <ul>
-        {rows.map((r) => (
+        {visible.map((r) => (
           <li key={r.categoryId || r.category}>
             <button
               type="button"
@@ -86,6 +96,20 @@ export default function CategoriesTable({
           </li>
         ))}
       </ul>
+
+      {canCollapse && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          className="flex w-full items-center justify-center gap-2 border-t border-[var(--color-border)] px-5 py-3 text-xs text-[var(--color-text-secondary)] transition-colors hover:bg-[#1c1c1c] hover:text-[var(--color-text)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-gold)]"
+        >
+          {expanded ? "Show less" : `Show all ${rows.length} categories`}
+          <span className="text-[var(--color-text-tertiary)]">
+            {expanded ? "▴" : "▾"}
+          </span>
+        </button>
+      )}
     </div>
   );
 }
