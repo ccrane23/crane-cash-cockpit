@@ -8,8 +8,10 @@
 // normalized JSON over HTTPS, and we just fetch it.
 //
 // Contract (must match actual-bridge):
-//   GET {BRIDGE_URL}/accounts   Authorization: Bearer {BRIDGE_BEARER_TOKEN}
+//   GET {BRIDGE_URL}/accounts       Authorization: Bearer {BRIDGE_BEARER_TOKEN}
 //   200 -> { accounts: Account[] }
+//   GET {BRIDGE_URL}/transactions?start=YYYY-MM-DD&end=YYYY-MM-DD
+//   200 -> { transactions: Transaction[] }   (defaults to last 90 days)
 
 export type Account = {
   id: string;
@@ -17,6 +19,21 @@ export type Account = {
   balance: number; // major units (e.g. dollars), sign preserved
   offBudget: boolean;
   closed: boolean;
+};
+
+export type Transaction = {
+  id: string;
+  date: string; // YYYY-MM-DD
+  amount: number; // signed major units (dollars); negative = outflow
+  account: string;
+  accountId: string;
+  // Actual leaves these null for uncategorized / payee-less / note-less rows.
+  payee: string | null;
+  category: string | null;
+  categoryId: string | null;
+  notes: string | null;
+  cleared: boolean;
+  transfer: boolean;
 };
 
 function requireEnv(name: string): string {
@@ -47,6 +64,37 @@ export async function getAccounts(): Promise<Account[]> {
     throw new Error("Bridge /accounts response missing 'accounts' array");
   }
   return data.accounts;
+}
+
+export async function getTransactions(range?: {
+  start?: string; // YYYY-MM-DD
+  end?: string; // YYYY-MM-DD
+}): Promise<Transaction[]> {
+  const baseUrl = requireEnv("BRIDGE_URL"); // e.g. https://cranecashapp.com:5007
+  const token = requireEnv("BRIDGE_BEARER_TOKEN");
+
+  const url = new URL(`${baseUrl.replace(/\/$/, "")}/transactions`);
+  if (range?.start) url.searchParams.set("start", range.start);
+  if (range?.end) url.searchParams.set("end", range.end);
+
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+    // Sensitive, always-fresh financial data — never cache.
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(
+      `Bridge /transactions returned ${res.status} ${res.statusText}: ${body.slice(0, 500)}`,
+    );
+  }
+
+  const data = (await res.json()) as { transactions?: Transaction[] };
+  if (!Array.isArray(data.transactions)) {
+    throw new Error("Bridge /transactions response missing 'transactions' array");
+  }
+  return data.transactions;
 }
 
 // Errors from the fetch / its underlying layers carry their useful detail in
