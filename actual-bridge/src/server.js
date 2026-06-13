@@ -3,7 +3,7 @@ import { createServer as createHttpsServer } from "https";
 import { createServer as createHttpServer } from "http";
 import { timingSafeEqual } from "crypto";
 import express from "express";
-import { getAccounts, getTransactions, runSync } from "./actual.js";
+import { getAccounts, getTransactions, runSync, getGroups, getScheduledBills, getBudget } from "./actual.js";
 
 
 // Safety net: the Actual SDK can emit async errors that escape try/catch and
@@ -92,6 +92,36 @@ app.get("/sync-status", requireBearer, (_req, res) => {
   } catch (err) {
     // No sync has run yet (file missing) or unreadable.
     res.json({ syncedAt: null, ok: null, failures: [], accounts: [] });
+  }
+});
+
+app.get("/groups", requireBearer, async (_req, res) => {
+  try {
+    const groups = await getGroups();
+    res.json({ groups });
+  } catch (err) {
+    console.error("[bridge] /groups failed:", err);
+    res.status(502).json({ error: "actual_unreachable" });
+  }
+});
+
+app.get("/schedules", requireBearer, async (_req, res) => {
+  try {
+    const schedules = await getScheduledBills();
+    res.json({ schedules });
+  } catch (err) {
+    console.error("[bridge] /schedules failed:", err);
+    res.status(502).json({ error: "actual_unreachable" });
+  }
+});
+
+app.get("/budget", requireBearer, async (req, res) => {
+  try {
+    const budget = await getBudget(req.query.month);
+    res.json(budget);
+  } catch (err) {
+    console.error("[bridge] /budget failed:", err);
+    res.status(502).json({ error: "actual_unreachable" });
   }
 });
 

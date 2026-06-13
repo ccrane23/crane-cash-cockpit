@@ -211,3 +211,97 @@ export function runSync() {
     return result;
   });
 }
+
+/**
+ * Returns category groups with their child categories, so the dashboard can
+ * roll spending up by group (Essentials, Spending, etc.) instead of flat category.
+ * @returns {Promise<object[]>}
+ */
+export function getGroups() {
+  return serialize(async () => {
+    await ensureReady();
+    await api.sync();
+    const groups = await api.getCategoryGroups();
+    return groups.map((g) => ({
+      id: g.id,
+      name: g.name,
+      isIncome: Boolean(g.is_income),
+      categories: (g.categories || []).map((c) => ({
+        id: c.id,
+        name: c.name,
+      })),
+    }));
+  });
+}
+
+/**
+ * Returns scheduled (recurring) transactions so the dashboard can show real
+ * upcoming bills with their due dates and amounts, instead of guessing from history.
+ * @returns {Promise<object[]>}
+ */
+export function getScheduledBills() {
+  return serialize(async () => {
+    await ensureReady();
+    await api.sync();
+    const schedules = await api.getSchedules();
+    const accounts = await api.getAccounts();
+    const payees = await api.getPayees();
+    const acctName = new Map(accounts.map((a) => [a.id, a.name]));
+    const payeeName = new Map(payees.map((p) => [p.id, p.name]));
+
+    return (schedules || []).map((s) => {
+      const c = s._conditions || {};
+      // Amount can be a number or a {num, ...} range object depending on the rule.
+      let amount = null;
+      if (c.amount != null) {
+        amount =
+          typeof c.amount === "object"
+            ? c.amount.num != null
+              ? api.utils.integerToAmount(c.amount.num)
+              : null
+            : api.utils.integerToAmount(c.amount);
+      }
+      return {
+        id: s.id,
+        name: s.name || (c.payee ? payeeName.get(c.payee) : null) || "Scheduled",
+        nextDate: s.next_date || (c.date && c.date.date) || null,
+        amount,
+        account: c.account ? acctName.get(c.account) || null : null,
+        payee: c.payee ? payeeName.get(c.payee) || null : null,
+        completed: Boolean(s.completed),
+      };
+    });
+  });
+}
+
+/**
+ * Returns budgeted vs. actual per category for a given month (default current).
+ * Month format: "YYYY-MM". Enables true budgeted-vs-actual on the dashboard
+ * (vs. the trailing-average stand-in) — once budget amounts are entered in Actual.
+ * @param {string} [month]
+ * @returns {Promise<{month: string, categories: object[]}>}
+ */
+export function getBudget(month) {
+  return serialize(async () => {
+    await ensureReady();
+    await api.sync();
+    const m = month || new Date().toISOString().slice(0, 7); // YYYY-MM
+    const bm = await api.getBudgetMonth(m);
+
+    const categories = [];
+    for (const g of bm.categoryGroups || []) {
+      if (g.is_income) continue;
+      for (const c of g.categories || []) {
+        categories.push({
+          id: c.id,
+          name: c.name,
+          group: g.name,
+          budgeted: api.utils.integerToAmount(c.budgeted || 0),
+          spent: api.utils.integerToAmount(c.spent || 0),
+          balance: api.utils.integerToAmount(c.balance || 0),
+        });
+      }
+    }
+    return { month: m, categories };
+  });
+}
