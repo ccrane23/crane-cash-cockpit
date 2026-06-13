@@ -4,9 +4,11 @@ import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth";
 import {
   getAccounts,
   getTransactions,
+  getSyncStatus,
   describeError,
   type Account,
   type Transaction,
+  type SyncStatus as SyncStatusData,
 } from "@/lib/actual";
 import {
   computeSummary,
@@ -18,8 +20,10 @@ import {
   recentMonthKeys,
   monthKey,
 } from "@/lib/finance";
+import { nowMs } from "@/lib/format";
 import type { DashboardData } from "./dashboard/model";
 import Dashboard from "./dashboard/Dashboard";
+import SyncStatus from "./dashboard/SyncStatus";
 import SignOutButton from "./sign-out-button";
 
 // Sensitive financial data — never cache, always render per request.
@@ -45,10 +49,12 @@ export default async function Home() {
   const start = firstDayOf(months[0]);
 
   // Fetch independently: transactions drive almost everything, so a flaky
-  // /accounts (which only feeds cash position) must not blank the dashboard.
-  const [accountsResult, transactionsResult] = await Promise.allSettled([
+  // /accounts (which only feeds cash position) or /sync-status (just a freshness
+  // badge) must not blank the dashboard.
+  const [accountsResult, transactionsResult, syncResult] = await Promise.allSettled([
     getAccounts(),
     getTransactions({ start }),
+    getSyncStatus(),
   ]);
 
   let accounts: Account[] | null = null;
@@ -57,6 +63,16 @@ export default async function Home() {
   } else {
     console.error("Failed to load accounts:", describeError(accountsResult.reason));
   }
+
+  let syncStatus: SyncStatusData | null = null;
+  if (syncResult.status === "fulfilled") {
+    syncStatus = syncResult.value;
+  } else {
+    console.error("Failed to load sync status:", describeError(syncResult.reason));
+  }
+  // Stamp once on the server so the relative-time label is stable across
+  // SSR/hydration in <SyncStatus>.
+  const now = nowMs();
 
   let transactions: Transaction[] | null = null;
   let error: string | null = null;
@@ -95,6 +111,7 @@ export default async function Home() {
           <h1 className="mt-1 text-xl font-medium text-[var(--color-text)]">
             Dashboard
           </h1>
+          {syncStatus && <SyncStatus status={syncStatus} now={now} />}
         </div>
         <SignOutButton />
       </header>

@@ -12,6 +12,8 @@
 //   200 -> { accounts: Account[] }
 //   GET {BRIDGE_URL}/transactions?start=YYYY-MM-DD&end=YYYY-MM-DD
 //   200 -> { transactions: Transaction[] }   (defaults to last 90 days)
+//   GET {BRIDGE_URL}/sync-status
+//   200 -> SyncStatus   (last cron sync result; reads stored state, never syncs)
 
 export type Account = {
   id: string;
@@ -34,6 +36,20 @@ export type Transaction = {
   notes: string | null;
   cleared: boolean;
   transfer: boolean;
+};
+
+// Result of the last cron sync, as cached by the bridge. syncedAt is null when
+// the bridge has never recorded a successful run (fresh deploy / dead cron).
+export type SyncStatus = {
+  syncedAt: string | null; // ISO timestamp of the last sync, or null
+  ok: boolean; // false if any account failed to sync
+  failures: { id: string; name: string; error: string }[];
+  accounts: {
+    name: string;
+    lastTransaction: string | null;
+    daysStale: number | null;
+    syncError: string | null;
+  }[];
 };
 
 function requireEnv(name: string): string {
@@ -95,6 +111,39 @@ export async function getTransactions(range?: {
     throw new Error("Bridge /transactions response missing 'transactions' array");
   }
   return data.transactions;
+}
+
+// Reads the bridge's stored result of the last cron sync. This never triggers a
+// sync — it just surfaces when the data was last refreshed and whether any
+// account failed, so the dashboard can warn about a stale or dead cron.
+export async function getSyncStatus(): Promise<SyncStatus> {
+  const baseUrl = requireEnv("BRIDGE_URL"); // e.g. https://cranecashapp.com:5007
+  const token = requireEnv("BRIDGE_BEARER_TOKEN");
+
+  const res = await fetch(`${baseUrl.replace(/\/$/, "")}/sync-status`, {
+    headers: { Authorization: `Bearer ${token}` },
+    // Sensitive, always-fresh financial data — never cache.
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(
+      `Bridge /sync-status returned ${res.status} ${res.statusText}: ${body.slice(0, 500)}`,
+    );
+  }
+
+  const data = (await res.json()) as Partial<SyncStatus>;
+  // syncedAt may legitimately be null (never synced); only the shape is required.
+  if (typeof data.ok !== "boolean" || !Array.isArray(data.failures)) {
+    throw new Error("Bridge /sync-status response missing 'ok' / 'failures'");
+  }
+  return {
+    syncedAt: data.syncedAt ?? null,
+    ok: data.ok,
+    failures: data.failures,
+    accounts: Array.isArray(data.accounts) ? data.accounts : [],
+  };
 }
 
 // Errors from the fetch / its underlying layers carry their useful detail in

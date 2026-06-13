@@ -47,3 +47,29 @@ export function formatMonthLabel(monthKey: string): string {
   const mi = Number(m) - 1;
   return `${MONTHS_SHORT[mi] ?? m} '${y.slice(2)}`;
 }
+
+/** Current epoch milliseconds. Wraps the impure clock read so callers can stamp
+ *  a single `now` on the server and thread it through pure render code. */
+export function nowMs(): number {
+  return Date.now();
+}
+
+/**
+ * "just now" / "2 hours ago" / "3 days ago" for a past ISO timestamp.
+ * Coarse by design — this drives a sync freshness label, not a clock. Pass
+ * `now` to keep it deterministic; defaults to the current time.
+ */
+export function formatRelativeTime(iso: string, now: number = nowMs()): string {
+  const diffMs = now - new Date(iso).getTime();
+  const sec = Math.round(diffMs / 1000);
+  if (sec < 45) return "just now";
+
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min} minute${min === 1 ? "" : "s"} ago`;
+
+  const hr = Math.round(min / 60);
+  if (hr < 24) return `${hr} hour${hr === 1 ? "" : "s"} ago`;
+
+  const day = Math.round(hr / 24);
+  return `${day} day${day === 1 ? "" : "s"} ago`;
+}
