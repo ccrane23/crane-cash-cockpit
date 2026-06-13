@@ -8,7 +8,7 @@ TOKEN=$(grep -E '^BRIDGE_BEARER_TOKEN=' "$ENV_FILE" | cut -d= -f2-)
 RESEND_KEY=$(grep -E '^RESEND_API_KEY=' "$ENV_FILE" | cut -d= -f2-)
 ALERT_EMAIL=$(grep -E '^ALERT_EMAIL=' "$ENV_FILE" | cut -d= -f2-)
 
-BRIDGE_URL="https://cranecashapp.com:5007/sync"
+BRIDGE_URL="https://api.cranecashapp.com:5007/sync"
 FROM="Crane Cash Cockpit <alerts@cranecashapp.com>"
 TS=$(date -Is)
 

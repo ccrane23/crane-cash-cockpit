@@ -35,13 +35,14 @@ services:
       - PORT=5007
       # Fail fast at `up` time if any secret is missing from the server .env.
       - BRIDGE_BEARER_TOKEN=${BRIDGE_BEARER_TOKEN:?set BRIDGE_BEARER_TOKEN in the server .env}
-      - ACTUAL_SERVER_URL=https://cranecashapp.com:5006
+      - ACTUAL_SERVER_URL=https://actual:5006
+      - NODE_TLS_REJECT_UNAUTHORIZED=0
       - ACTUAL_PASSWORD=${ACTUAL_PASSWORD:?set ACTUAL_PASSWORD in the server .env}
       - ACTUAL_SYNC_ID=${ACTUAL_SYNC_ID:?set ACTUAL_SYNC_ID in the server .env}
       - DATA_DIR=/data
       # In-process TLS termination using the host's Let's Encrypt cert, mounted ro.
-      - TLS_CERT=/etc/letsencrypt/live/cranecashapp.com/fullchain.pem
-      - TLS_KEY=/etc/letsencrypt/live/cranecashapp.com/privkey.pem
+      - TLS_CERT=/etc/letsencrypt/live/api.cranecashapp.com/fullchain.pem
+      - TLS_KEY=/etc/letsencrypt/live/api.cranecashapp.com/privkey.pem
     volumes:
       - /etc/letsencrypt:/etc/letsencrypt:ro
       - actual-bridge-data:/data
