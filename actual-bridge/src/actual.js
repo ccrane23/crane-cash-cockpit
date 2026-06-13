@@ -130,3 +130,70 @@ export function getTransactions(startDate, endDate) {
     return all;
   });
 }
+
+/**
+ * Triggers a bank sync (pulls fresh transactions from SimpleFIN), then reports
+ * per-account freshness so callers can detect stale connections.
+ * @returns {Promise<{ok: boolean, syncedAt: string, accounts: object[], error?: string}>}
+ */
+/**
+ * Syncs each account individually so one bad bank connection can't crash the
+ * whole batch (or the process). Reports per-account success/failure + freshness.
+ * @returns {Promise<{ok: boolean, syncedAt: string, failures: object[], accounts: object[]}>}
+ */
+export function runSync() {
+  return serialize(async () => {
+    await ensureReady();
+    await api.sync();
+
+    const today = new Date().toISOString().slice(0, 10);
+    const accounts = await api.getAccounts();
+    const failures = [];
+    const report = [];
+
+    for (const a of accounts) {
+      if (a.closed) continue;
+
+      // Sync this one account in isolation. A failure here is captured, not thrown.
+      let syncError = null;
+      try {
+        await api.runBankSync({ accountId: a.id });
+      } catch (err) {
+        syncError = err && err.message ? err.message : String(err);
+        console.error(`[bridge] sync failed for "${a.name}":`, syncError);
+        failures.push({ id: a.id, name: a.name, error: syncError });
+      }
+
+      // Freshness: most recent transaction date for this account.
+      const txns = await api.getTransactions(a.id, "2000-01-01", today);
+      let lastDate = null;
+      for (const t of txns) {
+        if (!lastDate || t.date > lastDate) lastDate = t.date;
+      }
+      const daysStale =
+        lastDate == null
+          ? null
+          : Math.floor(
+              (Date.parse(today) - Date.parse(lastDate)) / (1000 * 60 * 60 * 24),
+            );
+
+      report.push({
+        id: a.id,
+        name: a.name,
+        offBudget: Boolean(a.offbudget),
+        lastTransaction: lastDate,
+        daysStale,
+        syncError,
+      });
+    }
+
+    await api.sync(); // flush any new deltas
+
+    return {
+      ok: failures.length === 0,
+      syncedAt: new Date().toISOString(),
+      failures,
+      accounts: report,
+    };
+  });
+}

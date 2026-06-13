@@ -3,7 +3,18 @@ import { createServer as createHttpsServer } from "https";
 import { createServer as createHttpServer } from "http";
 import { timingSafeEqual } from "crypto";
 import express from "express";
-import { getAccounts, getTransactions } from "./actual.js";
+import { getAccounts, getTransactions, runSync } from "./actual.js";
+
+
+// Safety net: the Actual SDK can emit async errors that escape try/catch and
+// would otherwise crash the process. Log them instead of dying so one bad bank
+// connection can't take the bridge down.
+process.on("unhandledRejection", (reason) => {
+  console.error("[bridge] unhandledRejection:", reason && reason.message ? reason.message : reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[bridge] uncaughtException:", err && err.message ? err.message : err);
+});
 
 const PORT = Number(process.env.PORT || 5007);
 
@@ -59,6 +70,16 @@ app.get("/accounts", requireBearer, async (_req, res) => {
     res.json({ transactions });
   } catch (err) {
     console.error("[bridge] /transactions failed:", err);
+    res.status(502).json({ error: "actual_unreachable" });
+  }
+});
+
+app.post("/sync", requireBearer, async (_req, res) => {
+  try {
+    const result = await runSync();
+    res.json(result);
+  } catch (err) {
+    console.error("[bridge] /sync failed:", err);
     res.status(502).json({ error: "actual_unreachable" });
   }
 });
