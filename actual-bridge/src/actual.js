@@ -189,11 +189,25 @@ export function runSync() {
 
     await api.sync(); // flush any new deltas
 
-    return {
+    const result = {
       ok: failures.length === 0,
       syncedAt: new Date().toISOString(),
       failures,
       accounts: report,
     };
+
+    // Persist the latest sync result so /sync-status can serve it to the
+    // dashboard without triggering a fresh (slow) bank sync on page load.
+    try {
+      const { writeFileSync } = await import("fs");
+      writeFileSync(
+        (process.env.DATA_DIR || "/data") + "/last-sync.json",
+        JSON.stringify(result),
+      );
+    } catch (e) {
+      console.error("[bridge] failed to write last-sync.json:", e && e.message ? e.message : e);
+    }
+
+    return result;
   });
 }

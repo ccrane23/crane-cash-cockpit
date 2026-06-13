@@ -84,6 +84,17 @@ app.post("/sync", requireBearer, async (_req, res) => {
   }
 });
 
+app.get("/sync-status", requireBearer, (_req, res) => {
+  try {
+    const p = (process.env.DATA_DIR || "/data") + "/last-sync.json";
+    const raw = readFileSync(p, "utf8");
+    res.json(JSON.parse(raw));
+  } catch (err) {
+    // No sync has run yet (file missing) or unreadable.
+    res.json({ syncedAt: null, ok: null, failures: [], accounts: [] });
+  }
+});
+
 let server;
 if (TLS_DISABLED) {
   console.warn("[bridge] TLS_DISABLED=1 — serving plain HTTP (local testing only)");
