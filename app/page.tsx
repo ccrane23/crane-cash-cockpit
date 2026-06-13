@@ -5,9 +5,11 @@ import {
   getAccounts,
   getTransactions,
   getSyncStatus,
+  getGroups,
   describeError,
   type Account,
   type Transaction,
+  type CategoryGroup,
   type SyncStatus as SyncStatusData,
 } from "@/lib/actual";
 import {
@@ -49,19 +51,28 @@ export default async function Home() {
   const start = firstDayOf(months[0]);
 
   // Fetch independently: transactions drive almost everything, so a flaky
-  // /accounts (which only feeds cash position) or /sync-status (just a freshness
-  // badge) must not blank the dashboard.
-  const [accountsResult, transactionsResult, syncResult] = await Promise.allSettled([
-    getAccounts(),
-    getTransactions({ start }),
-    getSyncStatus(),
-  ]);
+  // /accounts (which only feeds cash position), /groups (just the history-chart
+  // rollup), or /sync-status (just a freshness badge) must not blank the dashboard.
+  const [accountsResult, transactionsResult, groupsResult, syncResult] =
+    await Promise.allSettled([
+      getAccounts(),
+      getTransactions({ start }),
+      getGroups(),
+      getSyncStatus(),
+    ]);
 
   let accounts: Account[] | null = null;
   if (accountsResult.status === "fulfilled") {
     accounts = accountsResult.value;
   } else {
     console.error("Failed to load accounts:", describeError(accountsResult.reason));
+  }
+
+  let groups: CategoryGroup[] = [];
+  if (groupsResult.status === "fulfilled") {
+    groups = groupsResult.value;
+  } else {
+    console.error("Failed to load groups:", describeError(groupsResult.reason));
   }
 
   let syncStatus: SyncStatusData | null = null;
@@ -92,7 +103,7 @@ export default async function Home() {
       summary: computeSummary(accounts, transactions, month),
       month,
       categories: computeCategoryBreakdown(transactions, month),
-      history: computeHistory(transactions, months),
+      history: computeHistory(transactions, months, groups),
       recent: recentActivity(transactions),
       bills: computeUpcomingBills(transactions),
       accountsAvailable: accounts !== null,

@@ -2,7 +2,7 @@
 // about and to unit-test. All money is in signed major units (dollars);
 // negative amounts are outflows.
 
-import type { Account, Transaction } from "./actual";
+import type { Account, CategoryGroup, Transaction } from "./actual";
 
 // ── Exclusion rules ──────────────────────────────────────────────────────────
 // Actual seeds each account with a "Starting Balance" entry (category
@@ -192,40 +192,64 @@ export function computeCategoryBreakdown(
 }
 
 // ── Monthly history series (the stacked chart) ───────────────────────────────
-// The bridge exposes flat categories, not category *groups*, so we stack by the
-// top-N categories across the whole window and fold the long tail into "Other".
+// Spending is rolled up by category *group* (e.g. "Groceries" + "Mortgage" →
+// "Essentials"). The bridge's /groups endpoint supplies the category→group
+// mapping. There are only a handful of spending groups, so we stack all of them
+// — no top-N / "Other" fold. Outflows whose category maps to no spending group
+// (uncategorized, or a category the bridge didn't place) fall into a single
+// neutral "Uncategorized" bucket so the monthly totals stay faithful.
 
-export const OTHER_CATEGORY_ID = "__other__";
+export const UNCATEGORIZED_GROUP_ID = "__uncategorized__";
 
 export type HistorySeries = {
-  /** Stack order: top-N categories by window total, then "Other" if non-empty. */
-  categories: { category: string; categoryId: string }[];
-  /** One entry per month (oldest→newest); `values` aligns to `categories`. */
+  /** Stack/legend order: spending groups by window total, then "Uncategorized" if non-empty. */
+  groups: { group: string; groupId: string }[];
+  /** One entry per month (oldest→newest); `values` aligns to `groups`. */
   months: { month: string; total: number; values: number[] }[];
 };
+
+/** categoryId → spending group, plus the set of income-group category ids to exclude. */
+function buildGroupLookup(groups: CategoryGroup[]): {
+  byCategoryId: Map<string, { id: string; name: string }>;
+  incomeCategoryIds: Set<string>;
+} {
+  const byCategoryId = new Map<string, { id: string; name: string }>();
+  const incomeCategoryIds = new Set<string>();
+  for (const g of groups) {
+    for (const c of g.categories) {
+      if (g.isIncome) incomeCategoryIds.add(c.id);
+      else byCategoryId.set(c.id, { id: g.id, name: g.name });
+    }
+  }
+  return { byCategoryId, incomeCategoryIds };
+}
 
 export function computeHistory(
   transactions: Transaction[],
   months: string[],
-  topN = 6,
+  groups: CategoryGroup[],
 ): HistorySeries {
   const monthSet = new Set(months);
-  const windowTotals = new Map<
-    string,
-    { label: string; id: string; total: number }
-  >();
+  const { byCategoryId, incomeCategoryIds } = buildGroupLookup(groups);
+
+  // group key -> { label, id, total } across the whole window (for stack order)
+  const windowTotals = new Map<string, { label: string; id: string; total: number }>();
+  // month -> (group key -> summed outflow)
   const perMonth = new Map<string, Map<string, number>>();
 
   for (const tx of transactions) {
     if (!isCashFlow(tx) || tx.amount >= 0) continue; // outflows only
     const mk = monthKey(tx.date);
     if (!monthSet.has(mk)) continue;
+    // Exclude the income group from spending, beyond the outflow-only filter.
+    if (tx.categoryId && incomeCategoryIds.has(tx.categoryId)) continue;
 
-    const label = tx.category?.trim() || UNCATEGORIZED;
-    const key = tx.categoryId || label;
+    const group = tx.categoryId ? byCategoryId.get(tx.categoryId) : undefined;
+    const key = group?.id ?? UNCATEGORIZED_GROUP_ID;
+    const label = group?.name ?? UNCATEGORIZED;
     const amt = -tx.amount;
 
-    const wt = windowTotals.get(key) ?? { label, id: tx.categoryId || "", total: 0 };
+    const wt = windowTotals.get(key) ?? { label, id: key, total: 0 };
     wt.total += amt;
     windowTotals.set(key, wt);
 
@@ -234,36 +258,23 @@ export function computeHistory(
     perMonth.set(mk, m);
   }
 
-  const ranked = [...windowTotals.entries()].sort(
-    (a, b) => b[1].total - a[1].total,
-  );
-  const topKeys = ranked.slice(0, topN).map(([key]) => key);
-  const topKeySet = new Set(topKeys);
-  const hasOther = ranked.some(([key]) => !topKeySet.has(key));
+  // Largest groups at the bottom of the stack; "Uncategorized" always last.
+  const ranked = [...windowTotals.values()].sort((a, b) => {
+    if (a.id === UNCATEGORIZED_GROUP_ID) return 1;
+    if (b.id === UNCATEGORIZED_GROUP_ID) return -1;
+    return b.total - a.total;
+  });
 
-  const categories = topKeys.map((key) => ({
-    category: windowTotals.get(key)!.label,
-    categoryId: windowTotals.get(key)!.id,
-  }));
-  if (hasOther) {
-    categories.push({ category: "Other", categoryId: OTHER_CATEGORY_ID });
-  }
+  const seriesGroups = ranked.map((g) => ({ group: g.label, groupId: g.id }));
 
   const monthRows = months.map((mk) => {
     const m = perMonth.get(mk);
-    const values = topKeys.map((key) => m?.get(key) ?? 0);
-    if (hasOther) {
-      let other = 0;
-      if (m) {
-        for (const [key, amt] of m) if (!topKeySet.has(key)) other += amt;
-      }
-      values.push(other);
-    }
+    const values = ranked.map((g) => m?.get(g.id) ?? 0);
     const total = values.reduce((s, v) => s + v, 0);
     return { month: mk, total, values };
   });
 
-  return { categories, months: monthRows };
+  return { groups: seriesGroups, months: monthRows };
 }
 
 // ── Recent activity ──────────────────────────────────────────────────────────

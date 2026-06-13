@@ -14,6 +14,8 @@
 //   200 -> { transactions: Transaction[] }   (defaults to last 90 days)
 //   GET {BRIDGE_URL}/sync-status
 //   200 -> SyncStatus   (last cron sync result; reads stored state, never syncs)
+//   GET {BRIDGE_URL}/groups
+//   200 -> { groups: CategoryGroup[] }   (category→group rollup mapping)
 
 export type Account = {
   id: string;
@@ -50,6 +52,16 @@ export type SyncStatus = {
     daysStale: number | null;
     syncError: string | null;
   }[];
+};
+
+// A category group from Actual (e.g. "Essentials"), with the flat categories
+// that roll up into it. isIncome flags Actual's income group, which we exclude
+// from spending math.
+export type CategoryGroup = {
+  id: string;
+  name: string;
+  isIncome: boolean;
+  categories: { id: string; name: string }[];
 };
 
 function requireEnv(name: string): string {
@@ -111,6 +123,33 @@ export async function getTransactions(range?: {
     throw new Error("Bridge /transactions response missing 'transactions' array");
   }
   return data.transactions;
+}
+
+// Fetches the category→group rollup so the history chart can stack spending by
+// group instead of flat category. Income groups are included in the payload; the
+// caller filters them out of spending.
+export async function getGroups(): Promise<CategoryGroup[]> {
+  const baseUrl = requireEnv("BRIDGE_URL"); // e.g. https://cranecashapp.com:5007
+  const token = requireEnv("BRIDGE_BEARER_TOKEN");
+
+  const res = await fetch(`${baseUrl.replace(/\/$/, "")}/groups`, {
+    headers: { Authorization: `Bearer ${token}` },
+    // Sensitive, always-fresh financial data — never cache.
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(
+      `Bridge /groups returned ${res.status} ${res.statusText}: ${body.slice(0, 500)}`,
+    );
+  }
+
+  const data = (await res.json()) as { groups?: CategoryGroup[] };
+  if (!Array.isArray(data.groups)) {
+    throw new Error("Bridge /groups response missing 'groups' array");
+  }
+  return data.groups;
 }
 
 // Reads the bridge's stored result of the last cron sync. This never triggers a

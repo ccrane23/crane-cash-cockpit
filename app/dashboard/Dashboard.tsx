@@ -49,12 +49,7 @@ export default function Dashboard({ data }: { data: DashboardData }) {
           <p className="mini-label">Spending history</p>
           <p className="mini-label">12 months</p>
         </div>
-        <HistoryChart
-          series={data.history}
-          onSelectCategory={(categoryId, category) =>
-            setSelection({ kind: "category", categoryId, category })
-          }
-        />
+        <HistoryChart series={data.history} />
       </section>
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">

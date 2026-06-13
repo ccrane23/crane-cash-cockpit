@@ -1,31 +1,37 @@
 import type { HistorySeries } from "@/lib/finance";
-import { OTHER_CATEGORY_ID } from "@/lib/finance";
+import { UNCATEGORIZED_GROUP_ID } from "@/lib/finance";
 import { formatMonthLabel, formatCurrencyWhole } from "@/lib/format";
 
-// Muted, editorial categorical palette. Index aligns to series.categories;
-// "Other" always renders in the neutral tail color regardless of its index.
-const PALETTE = [
-  "#c9a96e", // gold
-  "#14a89e", // teal
-  "#5b8fb0", // slate blue
-  "#b0859e", // mauve
-  "#9fb07a", // sage
-  "#cf8a5c", // amber
-];
-const OTHER_COLOR = "#4a4a4a";
+// On-brand categorical colors: tints and shades of the gold / teal / cream
+// palette only — no new saturated hues. Keyed by group name so a group keeps
+// its color as its rank shifts month to month. "Uncategorized" is the neutral
+// tail; unknown group names fall back deterministically into the same ramp.
+const GROUP_COLORS: Record<string, string> = {
+  essentials: "#c9a96e", // gold
+  "family & kids": "#14a89e", // teal
+  spending: "#ddc59a", // gold — tint
+  travel: "#5cc4bd", // teal — tint
+  autos: "#a07f4a", // gold — shade
+  investments: "#0c6f68", // teal — shade
+  fees: "#e8e0d0", // cream
+  misc: "#b8ad97", // cream — taupe shade
+};
+const RAMP = Object.values(GROUP_COLORS);
+const UNCATEGORIZED_COLOR = "#4a4a4a";
 
-function colorFor(categoryId: string, index: number): string {
-  if (categoryId === OTHER_CATEGORY_ID) return OTHER_COLOR;
-  return PALETTE[index % PALETTE.length];
+function hash(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
 }
 
-export default function HistoryChart({
-  series,
-  onSelectCategory,
-}: {
-  series: HistorySeries;
-  onSelectCategory?: (categoryId: string, category: string) => void;
-}) {
+function colorFor(groupId: string, group: string): string {
+  if (groupId === UNCATEGORIZED_GROUP_ID) return UNCATEGORIZED_COLOR;
+  const key = group.trim().toLowerCase();
+  return GROUP_COLORS[key] ?? RAMP[hash(key) % RAMP.length];
+}
+
+export default function HistoryChart({ series }: { series: HistorySeries }) {
   const max = Math.max(...series.months.map((m) => m.total), 1);
   const hasData = series.months.some((m) => m.total > 0);
 
@@ -41,30 +47,18 @@ export default function HistoryChart({
     <div className="bg-[var(--color-surface)] p-5">
       {/* Legend */}
       <div className="mb-5 flex flex-wrap gap-x-4 gap-y-2">
-        {series.categories.map((c, i) => {
-          const drillable =
-            onSelectCategory && c.categoryId !== OTHER_CATEGORY_ID;
-          return (
-            <button
-              key={c.categoryId || c.category}
-              type="button"
-              onClick={
-                drillable
-                  ? () => onSelectCategory!(c.categoryId, c.category)
-                  : undefined
-              }
-              className={`flex items-center gap-2 text-xs ${
-                drillable ? "hover:text-[var(--color-text)]" : "cursor-default"
-              } text-[var(--color-text-secondary)] focus:outline-none`}
-            >
-              <span
-                className="inline-block h-2.5 w-2.5 rounded-sm"
-                style={{ background: colorFor(c.categoryId, i) }}
-              />
-              {c.category}
-            </button>
-          );
-        })}
+        {series.groups.map((g) => (
+          <span
+            key={g.groupId}
+            className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]"
+          >
+            <span
+              className="inline-block h-2.5 w-2.5 rounded-sm"
+              style={{ background: colorFor(g.groupId, g.group) }}
+            />
+            {g.group}
+          </span>
+        ))}
       </div>
 
       {/* Bars */}
@@ -78,15 +72,15 @@ export default function HistoryChart({
             >
               {m.values.map((v, i) => {
                 if (v <= 0) return null;
-                const cat = series.categories[i];
+                const g = series.groups[i];
                 return (
                   <div
-                    key={cat.categoryId || cat.category}
+                    key={g.groupId}
                     style={{
                       height: `${(v / m.total) * 100}%`,
-                      background: colorFor(cat.categoryId, i),
+                      background: colorFor(g.groupId, g.group),
                     }}
-                    title={`${cat.category} · ${formatMonthLabel(m.month)} · ${formatCurrencyWhole(v)}`}
+                    title={`${g.group} · ${formatMonthLabel(m.month)} · ${formatCurrencyWhole(v)}`}
                   />
                 );
               })}
