@@ -9,10 +9,12 @@ import type { Account, Transaction } from "./actual";
 // "Starting Balances" / payee "Starting Balance"). Those are not real cash flow
 // and would wildly inflate income, so they're stripped from all spend/income
 // math. Transfers (transfer: true) move money between our own accounts — also
-// not income or spending.
+// not income or spending. Likewise, anything categorized "Internal Transfers"
+// is money shuffled between own accounts and is excluded from the math.
 
 const STARTING_BALANCE_CATEGORY = "starting balances";
 const STARTING_BALANCE_PAYEE = "starting balance";
+const INTERNAL_TRANSFER_CATEGORY = "internal transfers";
 
 export function isStartingBalance(tx: Transaction): boolean {
   return (
@@ -21,9 +23,14 @@ export function isStartingBalance(tx: Transaction): boolean {
   );
 }
 
+/** Category Actual uses for money moved between own accounts that isn't flagged transfer:true. */
+export function isInternalTransfer(tx: Transaction): boolean {
+  return tx.category?.trim().toLowerCase() === INTERNAL_TRANSFER_CATEGORY;
+}
+
 /** True if a transaction counts toward real income/spending. */
 export function isCashFlow(tx: Transaction): boolean {
-  return !tx.transfer && !isStartingBalance(tx);
+  return !tx.transfer && !isStartingBalance(tx) && !isInternalTransfer(tx);
 }
 
 // ── Date helpers (string-based; no timezone math) ────────────────────────────
