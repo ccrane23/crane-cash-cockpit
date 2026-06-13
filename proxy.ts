@@ -20,6 +20,10 @@ export function proxy(request: NextRequest) {
 export const config = {
   // Gate pages only. API routes are excluded — they self-authorize and return
   // proper JSON status codes (e.g. 401) instead of an HTML redirect, which a
-  // client-side fetch can handle. Also skip the login page and static assets.
-  matcher: ["/((?!login|api|_next/static|_next/image|favicon.ico).*)"],
+  // client-side fetch can handle. Also skip the login page, static assets, and
+  // the public PWA assets (manifest + home-screen icons), which the browser
+  // must be able to fetch unauthenticated — they hold no sensitive data.
+  matcher: [
+    "/((?!login|api|_next/static|_next/image|favicon.ico|fav16.png|fav32.png|manifest.webmanifest|icon-192.png|icon-512.png|apple-touch-icon.png).*)",
+  ],
 };
