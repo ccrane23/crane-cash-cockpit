@@ -5,6 +5,14 @@ import { timingSafeEqual } from "crypto";
 import express from "express";
 import { getAccounts, getTransactions, runSync, getGroups, getScheduledBills, getBudget } from "./actual.js";
 import { getHoldings, addLot, deleteLot, ValidationError } from "./holdings.js";
+import {
+  getWatchlist,
+  getWatchlistTickers,
+  addWatchlistEntry,
+  updateWatchlistEntry,
+  deleteWatchlistEntry,
+  ValidationError as WatchlistValidationError,
+} from "./watchlist.js";
 import { getQuotes } from "./prices.js";
 
 
@@ -162,17 +170,66 @@ app.delete("/holdings/:id", requireBearer, (req, res) => {
   }
 });
 
-// Live prices for the tickers currently held. Cached ~30 min on the bridge;
-// ?force=true bypasses the cache for a manual refresh.
+// Live prices for every ticker we hold OR watch. The union is deduped inside
+// getQuotes (a ticker held and watched is fetched once and shares one quote).
+// Cached ~30 min on the bridge; ?force=true bypasses the cache.
 app.get("/prices", requireBearer, async (req, res) => {
   try {
     const { rollups } = getHoldings();
-    const tickers = rollups.map((r) => r.ticker);
+    const tickers = [...rollups.map((r) => r.ticker), ...getWatchlistTickers()];
     const force = req.query.force === "true";
     res.json(await getQuotes(tickers, { force }));
   } catch (err) {
     console.error("[bridge] /prices failed:", err);
     res.status(502).json({ error: "prices_unavailable" });
+  }
+});
+
+// Watchlist — buy-zone targets. Same Bearer auth as the rest.
+app.get("/watchlist", requireBearer, (_req, res) => {
+  try {
+    res.json(getWatchlist());
+  } catch (err) {
+    console.error("[bridge] /watchlist failed:", err);
+    res.status(500).json({ error: "watchlist_unavailable" });
+  }
+});
+
+app.post("/watchlist", requireBearer, (req, res) => {
+  try {
+    const entry = addWatchlistEntry(req.body || {});
+    res.status(201).json({ entry });
+  } catch (err) {
+    if (err instanceof WatchlistValidationError) {
+      return res.status(400).json({ error: err.message });
+    }
+    console.error("[bridge] POST /watchlist failed:", err);
+    res.status(500).json({ error: "watchlist_unavailable" });
+  }
+});
+
+app.patch("/watchlist/:id", requireBearer, (req, res) => {
+  try {
+    const entry = updateWatchlistEntry(req.params.id, req.body || {});
+    if (!entry) return res.status(404).json({ error: "not_found" });
+    res.json({ entry });
+  } catch (err) {
+    if (err instanceof WatchlistValidationError) {
+      return res.status(400).json({ error: err.message });
+    }
+    console.error("[bridge] PATCH /watchlist failed:", err);
+    res.status(500).json({ error: "watchlist_unavailable" });
+  }
+});
+
+app.delete("/watchlist/:id", requireBearer, (req, res) => {
+  try {
+    const removed = deleteWatchlistEntry(req.params.id);
+    if (!removed) return res.status(404).json({ error: "not_found" });
+    res.json({ ok: true, id: req.params.id });
+  } catch (err) {
+    console.error("[bridge] DELETE /watchlist failed:", err);
+    res.status(500).json({ error: "watchlist_unavailable" });
   }
 });
 

@@ -8,9 +8,11 @@ import {
   type HoldingsData,
   type PricesData,
 } from "@/lib/holdings";
+import { getWatchlist, type WatchlistData } from "@/lib/watchlist";
 import Nav from "../Nav";
 import SignOutButton from "../sign-out-button";
 import Investments from "./Investments";
+import Watchlist from "./Watchlist";
 
 // Personal financial data — never cache, always render per request.
 export const dynamic = "force-dynamic";
@@ -22,12 +24,11 @@ export default async function InvestmentsPage() {
     redirect("/login");
   }
 
-  // Holdings are essential; prices are a best-effort overlay. Fetch independently
-  // so a Finnhub outage (or a missing API key) still renders cost-basis figures.
-  const [holdingsResult, pricesResult] = await Promise.allSettled([
-    getHoldings(),
-    getPrices(),
-  ]);
+  // Holdings are essential; prices and the watchlist are best-effort overlays.
+  // Fetch independently so a Finnhub outage (or a missing API key) still renders
+  // cost-basis figures, and a watchlist hiccup doesn't blank the holdings.
+  const [holdingsResult, pricesResult, watchlistResult] =
+    await Promise.allSettled([getHoldings(), getPrices(), getWatchlist()]);
 
   let holdings: HoldingsData | null = null;
   let error: string | null = null;
@@ -43,6 +44,13 @@ export default async function InvestmentsPage() {
     prices = pricesResult.value;
   } else {
     console.error("Failed to load prices:", describeError(pricesResult.reason));
+  }
+
+  let watchlist: WatchlistData | null = null;
+  if (watchlistResult.status === "fulfilled") {
+    watchlist = watchlistResult.value;
+  } else {
+    console.error("Failed to load watchlist:", describeError(watchlistResult.reason));
   }
 
   return (
@@ -69,6 +77,21 @@ export default async function InvestmentsPage() {
       ) : (
         <p className="mt-8 text-[var(--color-text-secondary)]">Loading…</p>
       )}
+
+      <div className="mt-10">
+        {watchlist ? (
+          <Watchlist initial={watchlist} initialPrices={prices} />
+        ) : (
+          <section>
+            <div className="mb-3 px-1">
+              <p className="mini-label">Watchlist</p>
+            </div>
+            <p className="bg-[var(--color-surface)] px-5 py-4 text-sm text-[var(--color-text-tertiary)]">
+              Watchlist is unavailable right now.
+            </p>
+          </section>
+        )}
+      </div>
     </main>
   );
 }

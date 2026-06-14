@@ -41,6 +41,7 @@ yarn-error.log*
 
 # bridge server-side persisted data (lives in the /data volume on prod; never commit)
 holdings.json
+watchlist.json
 
 # typescript
 *.tsbuildinfo
