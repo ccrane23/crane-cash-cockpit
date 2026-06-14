@@ -21,6 +21,8 @@ export type PriceTarget = {
   low: number | null;
 };
 
+export type EntryRating = "attractive" | "neutral" | "extended";
+
 export type Signal = {
   name: string | null;
   high52: number | null;
@@ -30,6 +32,10 @@ export type Signal = {
   rsi14: number | null;
   recommendation: Recommendation | null;
   priceTarget: PriceTarget | null;
+  // Computed on the bridge — at-a-glance "should I look at this" for a
+  // cost-averaging investor. null when no sub-signals were available to score.
+  entryRating: EntryRating | null;
+  entryReason: string | null;
 };
 
 // Data-source access: null unknown, true works, false premium/denied/bad key.

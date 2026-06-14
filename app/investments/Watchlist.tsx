@@ -4,7 +4,7 @@ import { useState } from "react";
 import { formatCurrency } from "@/lib/format";
 import type { PricesData } from "@/lib/holdings";
 import type { WatchlistData, WatchlistEntry } from "@/lib/watchlist";
-import type { Signal, SignalsData } from "@/lib/signals";
+import type { EntryRating, Signal, SignalsData } from "@/lib/signals";
 
 // Compact currency (no forced cents) for 52-week bounds and targets.
 const moneyShort = new Intl.NumberFormat("en-US", {
@@ -80,27 +80,52 @@ function MaCell({ label, price, ma }: { label: string; price: number | null; ma:
   );
 }
 
-// Informational "read": how many simple signals lean toward a reasonable entry.
-// NOT advice — just a count of below-200DMA, RSI under 40, and below mean target.
-function entryRead(
-  price: number | null,
-  s: Signal,
-): { count: number; total: number } {
-  let count = 0;
-  let total = 0;
-  if (price !== null && s.ma200 !== null) {
-    total++;
-    if (price < s.ma200) count++;
-  }
-  if (s.rsi14 !== null) {
-    total++;
-    if (s.rsi14 < 40) count++;
-  }
-  if (price !== null && s.priceTarget?.mean != null) {
-    total++;
-    if (price < s.priceTarget.mean) count++;
-  }
-  return { count, total };
+// Display style for the bridge-computed entry rating. The dot is the at-a-glance
+// signal; the label and reason spell it out.
+const RATING_STYLE: Record<
+  NonNullable<EntryRating>,
+  { label: string; color: string }
+> = {
+  attractive: { label: "Attractive", color: "var(--color-positive)" },
+  neutral: { label: "Neutral", color: "var(--color-gold)" },
+  extended: { label: "Extended", color: "var(--color-negative)" },
+};
+
+function EntryRatingRow({
+  rating,
+  reason,
+}: {
+  rating: EntryRating | null;
+  reason: string | null;
+}) {
+  const style = rating
+    ? RATING_STYLE[rating]
+    : { label: "No signal", color: "var(--color-text-tertiary)" };
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        <span
+          className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+          style={{ backgroundColor: style.color }}
+          aria-hidden
+        />
+        <span
+          className="text-sm font-medium"
+          style={{ color: style.color }}
+        >
+          {style.label}
+        </span>
+      </div>
+      {reason && (
+        <p
+          className="mt-0.5 truncate text-[11px] text-[var(--color-text-tertiary)]"
+          title={reason}
+        >
+          {reason}
+        </p>
+      )}
+    </div>
+  );
 }
 
 export default function Watchlist({
@@ -244,9 +269,6 @@ export default function Watchlist({
               pos52 = clamp(((price - s.low52) / (s.high52 - s.low52)) * 100, 0, 100);
             }
 
-            const read = s ? entryRead(price, s) : { count: 0, total: 0 };
-            const leaningEntry = read.total >= 2 && read.count >= 2;
-
             const tone = s?.rsi14 != null ? rsiTone(s.rsi14) : null;
 
             const target = s?.priceTarget?.mean ?? null;
@@ -306,23 +328,19 @@ export default function Watchlist({
                   </div>
                 </div>
 
-                <div className="flex items-end justify-between gap-2">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-tertiary)]">
-                      Price
-                    </p>
-                    <p className="text-lg tabular-nums text-[var(--color-text)]">
-                      {price !== null ? formatCurrency(price) : "—"}
-                    </p>
-                  </div>
-                  {leaningEntry && (
-                    <span
-                      className="inline-flex items-center bg-[var(--color-gold)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[var(--color-bg)]"
-                      title={`${read.count} of ${read.total} entry signals: below 200-day, RSI < 40, below mean target`}
-                    >
-                      Leaning entry
-                    </span>
-                  )}
+                {/* Entry rating — the at-a-glance signal */}
+                <EntryRatingRow
+                  rating={s?.entryRating ?? null}
+                  reason={s?.entryReason ?? null}
+                />
+
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-tertiary)]">
+                    Price
+                  </p>
+                  <p className="text-lg tabular-nums text-[var(--color-text)]">
+                    {price !== null ? formatCurrency(price) : "—"}
+                  </p>
                 </div>
 
                 {/* 52-week range */}
