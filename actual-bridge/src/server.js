@@ -4,6 +4,7 @@ import { createServer as createHttpServer } from "http";
 import { timingSafeEqual } from "crypto";
 import express from "express";
 import { getAccounts, getTransactions, runSync, getGroups, getScheduledBills, getBudget } from "./actual.js";
+import { getHoldings, addLot, ValidationError } from "./holdings.js";
 
 
 // Safety net: the Actual SDK can emit async errors that escape try/catch and
@@ -33,6 +34,7 @@ const TLS_KEY =
   process.env.TLS_KEY || "/etc/letsencrypt/live/cranecashapp.com/privkey.pem";
 
 const app = express();
+app.use(express.json());
 
 function safeEqual(a, b) {
   const ab = Buffer.from(a);
@@ -122,6 +124,29 @@ app.get("/budget", requireBearer, async (req, res) => {
   } catch (err) {
     console.error("[bridge] /budget failed:", err);
     res.status(502).json({ error: "actual_unreachable" });
+  }
+});
+
+// Investments holdings store — file-backed, independent of the Actual SDK.
+app.get("/holdings", requireBearer, (_req, res) => {
+  try {
+    res.json(getHoldings());
+  } catch (err) {
+    console.error("[bridge] /holdings failed:", err);
+    res.status(500).json({ error: "holdings_unavailable" });
+  }
+});
+
+app.post("/holdings", requireBearer, (req, res) => {
+  try {
+    const lot = addLot(req.body || {});
+    res.status(201).json({ lot });
+  } catch (err) {
+    if (err instanceof ValidationError) {
+      return res.status(400).json({ error: err.message });
+    }
+    console.error("[bridge] POST /holdings failed:", err);
+    res.status(500).json({ error: "holdings_unavailable" });
   }
 });
 

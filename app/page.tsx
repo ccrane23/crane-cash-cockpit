@@ -29,6 +29,7 @@ import type { DashboardData } from "./dashboard/model";
 import Dashboard from "./dashboard/Dashboard";
 import SyncStatus from "./dashboard/SyncStatus";
 import SignOutButton from "./sign-out-button";
+import Nav from "./Nav";
 
 // Sensitive financial data — never cache, always render per request.
 export const dynamic = "force-dynamic";
@@ -131,7 +132,10 @@ export default async function Home() {
           </h1>
           {syncStatus && <SyncStatus status={syncStatus} now={now} />}
         </div>
-        <SignOutButton />
+        <div className="flex items-center gap-5">
+          <Nav />
+          <SignOutButton />
+        </div>
       </header>
 
       {error ? (

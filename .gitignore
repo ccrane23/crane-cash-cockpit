@@ -39,6 +39,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# bridge server-side persisted data (lives in the /data volume on prod; never commit)
+holdings.json
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
