@@ -32,12 +32,13 @@ export type Signal = {
   priceTarget: PriceTarget | null;
 };
 
-// Per-endpoint Finnhub tier access: null unknown, true works, false premium/denied.
+// Data-source access: null unknown, true works, false premium/denied/bad key.
+// metric/recommendation/priceTarget are Finnhub; twelveData is the MA/RSI source.
 export type SignalTier = {
-  candle: boolean | null;
   metric: boolean | null;
   recommendation: boolean | null;
   priceTarget: boolean | null;
+  twelveData: boolean | null;
 };
 
 export type SignalsData = {
@@ -79,10 +80,10 @@ export async function getSignals(opts?: { force?: boolean }): Promise<SignalsDat
     signals: data.signals as Record<string, Signal | null>,
     fetchedAt: typeof data.fetchedAt === "number" ? data.fetchedAt : 0,
     tier: (data.tier as SignalTier) ?? {
-      candle: null,
       metric: null,
       recommendation: null,
       priceTarget: null,
+      twelveData: null,
     },
   };
 }

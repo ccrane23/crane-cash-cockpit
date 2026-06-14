@@ -200,10 +200,15 @@ export default function Watchlist({
     }
   }
 
-  // Whether any premium-only signal source is confirmed unavailable on our tier.
+  // Notes for any signal source confirmed unavailable on our current plan.
   const tier = signals?.tier;
-  const premiumHidden =
-    tier && (tier.candle === false || tier.priceTarget === false);
+  const tierNotes: string[] = [];
+  if (tier?.priceTarget === false) {
+    tierNotes.push("Analyst price targets need a paid Finnhub plan — hidden.");
+  }
+  if (tier?.twelveData === false) {
+    tierNotes.push("Moving averages & RSI need a valid Twelve Data key — hidden.");
+  }
 
   return (
     <section>
@@ -407,11 +412,12 @@ export default function Watchlist({
         </div>
       )}
 
-      {premiumHidden && (
-        <p className="mt-2 px-1 text-[10px] text-[var(--color-text-tertiary)]">
-          Some signals (moving averages, RSI, and/or analyst targets) require a
-          paid Finnhub plan and are hidden on the current tier.
-        </p>
+      {tierNotes.length > 0 && (
+        <div className="mt-2 px-1 text-[10px] text-[var(--color-text-tertiary)]">
+          {tierNotes.map((n) => (
+            <p key={n}>{n}</p>
+          ))}
+        </div>
       )}
 
       <div className="mt-6">

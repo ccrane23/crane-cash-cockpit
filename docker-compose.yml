@@ -40,6 +40,11 @@ services:
       - ACTUAL_PASSWORD=${ACTUAL_PASSWORD:?set ACTUAL_PASSWORD in the server .env}
       - ACTUAL_SYNC_ID=${ACTUAL_SYNC_ID:?set ACTUAL_SYNC_ID in the server .env}
       - DATA_DIR=/data
+      # Market data. Optional (soft default ''): the bridge degrades gracefully
+      # when a key is absent — Finnhub powers quotes/names/52w/recommendations;
+      # Twelve Data powers the 50/200-day MAs + RSI Finnhub's free tier can't.
+      - FINNHUB_API_KEY=${FINNHUB_API_KEY:-}
+      - TWELVEDATA_API_KEY=${TWELVEDATA_API_KEY:-}
       # In-process TLS termination using the host's Let's Encrypt cert, mounted ro.
       - TLS_CERT=/etc/letsencrypt/live/api.cranecashapp.com/fullchain.pem
       - TLS_KEY=/etc/letsencrypt/live/api.cranecashapp.com/privkey.pem

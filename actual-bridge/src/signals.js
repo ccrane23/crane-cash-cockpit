@@ -1,19 +1,21 @@
 // Data-driven signals per ticker: company name, 52-week range, 50/200-day SMAs,
-// RSI(14), and analyst consensus. Computed from Finnhub and cached aggressively.
+// RSI(14), and analyst consensus. Two providers, both cached aggressively (~8h):
 //
-// Finnhub free-tier reality (must be verified against the live key — see the
-// per-endpoint tier flags this module exposes):
-//   /quote            free  (price; handled in prices.js, not here)
-//   /stock/profile2   free  (company name)            -> cached permanently
-//   /stock/metric     free  (52-week high/low)
-//   /stock/candle     PREMIUM (daily OHLC) -> needed for SMA/RSI; degrades to null
-//   /stock/recommendation  free  (buy/hold/sell trend)
-//   /stock/price-target    PREMIUM (mean target)      -> degrades to null
+// Finnhub (free tier — verify against the live key via the `tier` flags):
+//   /stock/profile2        free     (company name)        -> cached permanently
+//   /stock/metric          free     (52-week high/low)
+//   /stock/recommendation  free     (buy/hold/sell trend)
+//   /stock/price-target    PREMIUM  (mean target)         -> degrades to null
+//   /stock/candle          PREMIUM  -> NOT used; SMA/RSI come from Twelve Data
 //
-// Cost control: each endpoint carries a tier flag. The first 403 flips it to
-// false and we STOP calling that endpoint for every remaining ticker — so a
-// free-tier key probes a premium endpoint once, not once per ticker. Computed
-// signals are cached ~8h (they only move daily); names are cached forever.
+// Twelve Data (free tier: 8 calls/min, 800/day) supplies ONLY the 50/200-day
+// SMA and RSI(14) that Finnhub's premium candle endpoint can't. One time_series
+// call per ticker per refresh, drained through a background queue throttled to
+// the 8/min limit (see runTwelveWorker) so a cold batch never blocks /signals.
+//
+// Finnhub cost control: each endpoint carries a tier flag; the first 403 flips
+// it false and we STOP calling it for the rest of the batch — so a free key
+// probes a premium endpoint once, not once per ticker.
 
 import { existsSync, readFileSync, writeFileSync } from "fs";
 
@@ -24,17 +26,31 @@ const SIGNAL_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours
 const FETCH_TIMEOUT_MS = 8000;
 const CONCURRENCY = 4; // stay well under Finnhub's 60 req/min free limit
 
-// Per-endpoint access: null = unknown, true = works, false = premium/denied.
-// Once false, we skip that endpoint entirely for the rest of the process life.
+// Twelve Data throttle: ≥8s between calls → ≤7.5/min, under the 8/min free cap.
+const TWELVE_TTL_MS = SIGNAL_TTL_MS;
+const TWELVE_SPACING_MS = 8000;
+
+// Per-endpoint access: null = unknown, true = works, false = premium/denied/bad
+// key. Once false we skip it for the rest of the process life. `twelveData`
+// tracks the Twelve Data MA/RSI source the same way (false on auth/plan reject).
 const tier = {
-  candle: null,
   metric: null,
   recommendation: null,
   priceTarget: null,
+  twelveData: null,
 };
 
-// { [TICKER]: { fetchedAt, data } }
+// { [TICKER]: { fetchedAt, data } } — Finnhub-derived fields.
 const signalCache = {};
+
+// Twelve Data MA/RSI cache + a throttled background queue. We never block a
+// /signals response on Twelve Data (its rate limit would mean minutes of latency
+// for a cold batch); instead we serve cached values and refill in the
+// background, so MA/RSI populate within a few minutes of the first request.
+const twelveCache = {}; // { [TICKER]: { fetchedAt, ma50, ma200, rsi14 } }
+const twelveQueue = [];
+const twelvePending = new Set();
+let twelveWorking = false;
 
 // Persistent company-name cache (names don't change).
 let namesCache = null;
@@ -137,31 +153,94 @@ async function getProfileName(ticker, key) {
   return name;
 }
 
-// Daily candles for ~400 calendar days (≥200 trading days). Returns the raw
-// Finnhub payload, or null when unavailable (premium / no data).
-async function fetchCandles(ticker, key) {
-  if (tier.candle === false) return null;
-  const to = Math.floor(Date.now() / 1000);
-  const from = to - 400 * 24 * 60 * 60;
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// ~1 year of daily closes from Twelve Data, oldest→newest. Returns null on any
+// failure (missing key, rate limit, error body) so MA/RSI just stay null and the
+// Finnhub-sourced fields still render.
+async function fetchTwelveCloses(ticker) {
+  const key = process.env.TWELVEDATA_API_KEY;
+  if (!key) return null;
+  const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(
+    ticker,
+  )}&interval=1day&outputsize=250&apikey=${key}`;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
   let res;
   try {
-    res = await finnhubGet(
-      `/stock/candle?symbol=${encodeURIComponent(ticker)}&resolution=D&from=${from}&to=${to}`,
-      key,
-    );
+    res = await fetch(url, { signal: ctrl.signal });
   } catch (err) {
-    console.error("[bridge] candle fetch failed:", ticker, err.message);
+    console.error("[bridge] Twelve Data fetch failed:", ticker, err.message);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+
+  const data = await res.json().catch(() => null);
+  // Twelve Data reports errors in the body with status:"error" + a numeric code,
+  // often still on HTTP 200.
+  if (data && data.status === "error") {
+    if (data.code === 401 || data.code === 403) {
+      if (tier.twelveData !== false) {
+        console.warn(
+          "[bridge] Twelve Data key/plan rejected — MA/RSI unavailable:",
+          data.message,
+        );
+      }
+      tier.twelveData = false;
+    } else if (data.code === 429) {
+      console.warn("[bridge] Twelve Data rate limited for", ticker);
+    } else {
+      console.error("[bridge] Twelve Data error for", ticker, data.message);
+    }
     return null;
   }
-  if (res.status === 403) {
-    notePremium("candle", "/stock/candle");
+  if (!res.ok || !data || !Array.isArray(data.values) || data.values.length === 0) {
     return null;
   }
-  if (!res.ok) return null;
-  const data = await res.json().catch(() => ({}));
-  if (data.s !== "ok" || !Array.isArray(data.c) || data.c.length === 0) return null;
-  tier.candle = true;
-  return data;
+
+  tier.twelveData = true;
+  // `values` is newest-first; reverse to chronological for the RSI walk.
+  return data.values
+    .map((v) => Number(v.close))
+    .filter((n) => Number.isFinite(n))
+    .reverse();
+}
+
+function enqueueTwelve(ticker) {
+  if (twelvePending.has(ticker)) return;
+  twelvePending.add(ticker);
+  twelveQueue.push(ticker);
+  if (!twelveWorking) runTwelveWorker();
+}
+
+// Drains the queue one ticker at a time with spacing to honor the 8/min limit.
+// Runs detached (never awaited by a request); failures leave MA/RSI null.
+async function runTwelveWorker() {
+  twelveWorking = true;
+  try {
+    while (twelveQueue.length) {
+      const ticker = twelveQueue.shift();
+      try {
+        const closes = await fetchTwelveCloses(ticker);
+        if (closes && closes.length) {
+          twelveCache[ticker] = {
+            fetchedAt: Date.now(),
+            ma50: round(sma(closes, 50)),
+            ma200: round(sma(closes, 200)),
+            rsi14: round(rsi(closes, 14)),
+          };
+        }
+      } catch (err) {
+        console.error("[bridge] Twelve Data worker error:", ticker, err.message);
+      } finally {
+        twelvePending.delete(ticker);
+      }
+      if (twelveQueue.length) await sleep(TWELVE_SPACING_MS);
+    }
+  } finally {
+    twelveWorking = false;
+  }
 }
 
 async function fetchMetric52(ticker, key) {
@@ -255,40 +334,23 @@ async function fetchPriceTarget(ticker, key) {
   return { mean, high, low };
 }
 
+// Finnhub-derived fields only. ma50/ma200/rsi14 are merged in from the Twelve
+// Data cache at response time (see getSignals).
 async function computeSignal(ticker, key) {
   const name = await getProfileName(ticker, key);
 
   let high52 = null;
   let low52 = null;
-  let ma50 = null;
-  let ma200 = null;
-  let rsi14 = null;
-
-  const candles = await fetchCandles(ticker, key);
-  if (candles) {
-    const closes = candles.c;
-    ma50 = round(sma(closes, 50));
-    ma200 = round(sma(closes, 200));
-    rsi14 = round(rsi(closes, 14));
-    // 52-week range from the same candle data (one fewer API call). Use the
-    // last ~252 trading days of daily highs/lows.
-    const highs = candles.h.slice(-252);
-    const lows = candles.l.slice(-252);
-    if (highs.length) high52 = round(Math.max(...highs));
-    if (lows.length) low52 = round(Math.min(...lows));
-  } else {
-    // No candle access — fall back to basic financials for the 52-week range.
-    const m = await fetchMetric52(ticker, key);
-    if (m) {
-      high52 = round(m.high52);
-      low52 = round(m.low52);
-    }
+  const m = await fetchMetric52(ticker, key);
+  if (m) {
+    high52 = round(m.high52);
+    low52 = round(m.low52);
   }
 
   const recommendation = await fetchRecommendation(ticker, key);
   const priceTarget = await fetchPriceTarget(ticker, key);
 
-  return { name, high52, low52, ma50, ma200, rsi14, recommendation, priceTarget };
+  return { name, high52, low52, recommendation, priceTarget };
 }
 
 async function mapLimit(items, limit, fn) {
@@ -333,15 +395,30 @@ export async function getSignals(tickers, { force = false } = {}) {
     }
   });
 
+  // Kick off (don't await) a background Twelve Data refresh for any ticker whose
+  // MA/RSI are missing or past the TTL. The throttled worker fills the cache for
+  // subsequent requests without blocking this one.
+  for (const t of unique) {
+    const tw = twelveCache[t];
+    const fresh = tw && now - tw.fetchedAt < TWELVE_TTL_MS;
+    if (force || !fresh) enqueueTwelve(t);
+  }
+
   const signals = {};
   let oldest = now;
   for (const t of unique) {
-    if (signalCache[t]) {
-      signals[t] = signalCache[t].data;
-      oldest = Math.min(oldest, signalCache[t].fetchedAt);
-    } else {
+    if (!signalCache[t]) {
       signals[t] = null;
+      continue;
     }
+    const tw = twelveCache[t] || {};
+    signals[t] = {
+      ...signalCache[t].data,
+      ma50: tw.ma50 ?? null,
+      ma200: tw.ma200 ?? null,
+      rsi14: tw.rsi14 ?? null,
+    };
+    oldest = Math.min(oldest, signalCache[t].fetchedAt);
   }
 
   return { signals, fetchedAt: oldest, tier: { ...tier } };
