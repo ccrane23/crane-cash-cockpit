@@ -229,7 +229,7 @@ export default function Watchlist({
   const tier = signals?.tier;
   const tierNotes: string[] = [];
   if (tier?.priceTarget === false) {
-    tierNotes.push("Analyst price targets need a paid Finnhub plan — hidden.");
+    tierNotes.push("Analyst price targets aren't available on the free data tiers (FMP/Finnhub).");
   }
   if (tier?.twelveData === false) {
     tierNotes.push("Moving averages & RSI need a valid Twelve Data key — hidden.");
@@ -253,7 +253,7 @@ export default function Watchlist({
           Nothing on the watchlist yet. Add a ticker below.
         </p>
       ) : (
-        <div className="grid grid-cols-1 gap-px bg-[var(--color-border)] sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {entries.map((e) => {
             const price = quoteFor(e.ticker);
             const s = signalFor(e.ticker);
@@ -280,7 +280,7 @@ export default function Watchlist({
             return (
               <div
                 key={e.id}
-                className="flex flex-col gap-3 bg-[var(--color-surface)] p-4"
+                className="flex flex-col gap-3 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-5"
               >
                 <div className="flex items-start justify-between gap-2">
                   <p className="min-w-0 truncate text-[var(--color-text)]">
