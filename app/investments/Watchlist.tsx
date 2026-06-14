@@ -280,7 +280,7 @@ export default function Watchlist({
             return (
               <div
                 key={e.id}
-                className="flex flex-col gap-3 rounded-md border border-[var(--color-gold)]/40 bg-[var(--color-surface)] p-5"
+                className="flex flex-col gap-3 rounded-md border border-[var(--color-gold)]/55 bg-[var(--color-surface)] p-5"
               >
                 <div className="flex items-start justify-between gap-2">
                   <p className="min-w-0 truncate text-[var(--color-text)]">
