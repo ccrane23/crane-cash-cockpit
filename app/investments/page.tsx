@@ -2,7 +2,12 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth";
 import { describeError } from "@/lib/actual";
-import { getHoldings, type HoldingsData } from "@/lib/holdings";
+import {
+  getHoldings,
+  getPrices,
+  type HoldingsData,
+  type PricesData,
+} from "@/lib/holdings";
 import Nav from "../Nav";
 import SignOutButton from "../sign-out-button";
 import Investments from "./Investments";
@@ -17,13 +22,27 @@ export default async function InvestmentsPage() {
     redirect("/login");
   }
 
+  // Holdings are essential; prices are a best-effort overlay. Fetch independently
+  // so a Finnhub outage (or a missing API key) still renders cost-basis figures.
+  const [holdingsResult, pricesResult] = await Promise.allSettled([
+    getHoldings(),
+    getPrices(),
+  ]);
+
   let holdings: HoldingsData | null = null;
   let error: string | null = null;
-  try {
-    holdings = await getHoldings();
-  } catch (err) {
-    console.error("Failed to load holdings:", describeError(err));
+  if (holdingsResult.status === "fulfilled") {
+    holdings = holdingsResult.value;
+  } else {
+    console.error("Failed to load holdings:", describeError(holdingsResult.reason));
     error = "Could not reach the holdings service.";
+  }
+
+  let prices: PricesData | null = null;
+  if (pricesResult.status === "fulfilled") {
+    prices = pricesResult.value;
+  } else {
+    console.error("Failed to load prices:", describeError(pricesResult.reason));
   }
 
   return (
@@ -45,7 +64,7 @@ export default async function InvestmentsPage() {
         <p className="mt-8 text-[var(--color-negative)]">{error}</p>
       ) : holdings ? (
         <div className="mt-6">
-          <Investments initial={holdings} />
+          <Investments initial={holdings} initialPrices={prices} />
         </div>
       ) : (
         <p className="mt-8 text-[var(--color-text-secondary)]">Loading…</p>

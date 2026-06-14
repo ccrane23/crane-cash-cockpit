@@ -111,3 +111,14 @@ export function addLot(input) {
   writeFileSync(HOLDINGS_PATH, JSON.stringify(lots, null, 2));
   return lot;
 }
+
+// Remove a single lot by id, persist, and report whether anything matched.
+// Returns false (→ 404) when the id isn't present.
+export function deleteLot(id) {
+  const lots = loadLots();
+  const idx = lots.findIndex((l) => l.id === id);
+  if (idx === -1) return false;
+  lots.splice(idx, 1);
+  writeFileSync(HOLDINGS_PATH, JSON.stringify(lots, null, 2));
+  return true;
+}

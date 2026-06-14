@@ -43,6 +43,16 @@ export type NewLotInput = {
   note?: string;
 };
 
+// Current price per ticker (null when the quote couldn't be fetched). Mirrors
+// the bridge's /prices payload.
+export type Quotes = Record<string, number | null>;
+
+export type PricesData = {
+  quotes: Quotes;
+  fetchedAt: number; // epoch ms; 0 when never fetched
+  stale: boolean; // true when served from the bridge's cache (no fresh fetch)
+};
+
 // Carries the bridge's HTTP status so the API route can relay a 400 validation
 // message to the client instead of collapsing every failure into a 502.
 export class BridgeHoldingsError extends Error {
@@ -117,4 +127,64 @@ export async function addHolding(input: NewLotInput): Promise<Lot> {
     throw new Error("Bridge POST /holdings response missing 'lot'");
   }
   return data.lot;
+}
+
+export async function getPrices(opts?: { force?: boolean }): Promise<PricesData> {
+  const baseUrl = requireEnv("BRIDGE_URL");
+  const token = requireEnv("BRIDGE_BEARER_TOKEN");
+
+  const url = new URL(`${baseUrl.replace(/\/$/, "")}/prices`);
+  if (opts?.force) url.searchParams.set("force", "true");
+
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(
+      `Bridge /prices returned ${res.status} ${res.statusText}: ${body.slice(0, 500)}`,
+    );
+  }
+
+  const data = (await res.json()) as Partial<PricesData>;
+  if (
+    typeof data.fetchedAt !== "number" ||
+    typeof data.quotes !== "object" ||
+    data.quotes === null
+  ) {
+    throw new Error("Bridge /prices response missing 'quotes' / 'fetchedAt'");
+  }
+  return {
+    quotes: data.quotes as Quotes,
+    fetchedAt: data.fetchedAt,
+    stale: Boolean(data.stale),
+  };
+}
+
+export async function deleteHolding(id: string): Promise<void> {
+  const baseUrl = requireEnv("BRIDGE_URL");
+  const token = requireEnv("BRIDGE_BEARER_TOKEN");
+
+  const res = await fetch(
+    `${baseUrl.replace(/\/$/, "")}/holdings/${encodeURIComponent(id)}`,
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    },
+  );
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    let message = text.slice(0, 500);
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed?.error) message = parsed.error;
+    } catch {
+      // non-JSON body; keep the raw text
+    }
+    throw new BridgeHoldingsError(res.status, message);
+  }
 }

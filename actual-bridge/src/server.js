@@ -4,7 +4,8 @@ import { createServer as createHttpServer } from "http";
 import { timingSafeEqual } from "crypto";
 import express from "express";
 import { getAccounts, getTransactions, runSync, getGroups, getScheduledBills, getBudget } from "./actual.js";
-import { getHoldings, addLot, ValidationError } from "./holdings.js";
+import { getHoldings, addLot, deleteLot, ValidationError } from "./holdings.js";
+import { getQuotes } from "./prices.js";
 
 
 // Safety net: the Actual SDK can emit async errors that escape try/catch and
@@ -147,6 +148,31 @@ app.post("/holdings", requireBearer, (req, res) => {
     }
     console.error("[bridge] POST /holdings failed:", err);
     res.status(500).json({ error: "holdings_unavailable" });
+  }
+});
+
+app.delete("/holdings/:id", requireBearer, (req, res) => {
+  try {
+    const removed = deleteLot(req.params.id);
+    if (!removed) return res.status(404).json({ error: "not_found" });
+    res.json({ ok: true, id: req.params.id });
+  } catch (err) {
+    console.error("[bridge] DELETE /holdings failed:", err);
+    res.status(500).json({ error: "holdings_unavailable" });
+  }
+});
+
+// Live prices for the tickers currently held. Cached ~30 min on the bridge;
+// ?force=true bypasses the cache for a manual refresh.
+app.get("/prices", requireBearer, async (req, res) => {
+  try {
+    const { rollups } = getHoldings();
+    const tickers = rollups.map((r) => r.ticker);
+    const force = req.query.force === "true";
+    res.json(await getQuotes(tickers, { force }));
+  } catch (err) {
+    console.error("[bridge] /prices failed:", err);
+    res.status(502).json({ error: "prices_unavailable" });
   }
 });
 
