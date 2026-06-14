@@ -15,6 +15,7 @@ import {
 } from "./watchlist.js";
 import { getQuotes } from "./prices.js";
 import { getSignals } from "./signals.js";
+import { getDeepDive, getDeepDiveStats, DeepDiveError } from "./deepdive.js";
 
 
 // Safety net: the Actual SDK can emit async errors that escape try/catch and
@@ -246,6 +247,32 @@ app.delete("/watchlist/:id", requireBearer, (req, res) => {
   } catch (err) {
     console.error("[bridge] DELETE /watchlist failed:", err);
     res.status(500).json({ error: "watchlist_unavailable" });
+  }
+});
+
+// AI deep-dive thesis — the only endpoint that calls Anthropic. Click-only and
+// cache-gated (24h per ticker) so repeat clicks never re-charge.
+app.post("/deep-dive", requireBearer, async (req, res) => {
+  try {
+    const result = await getDeepDive((req.body || {}).ticker);
+    res.json(result);
+  } catch (err) {
+    if (err instanceof DeepDiveError) {
+      console.error("[bridge] /deep-dive:", err.message);
+      return res.status(502).json({ error: "Deep dive unavailable" });
+    }
+    console.error("[bridge] /deep-dive failed:", err);
+    res.status(500).json({ error: "Deep dive unavailable" });
+  }
+});
+
+// Monthly deep-dive call counter — read-only, never triggers a generation.
+app.get("/deep-dive/stats", requireBearer, (_req, res) => {
+  try {
+    res.json(getDeepDiveStats());
+  } catch (err) {
+    console.error("[bridge] /deep-dive/stats failed:", err);
+    res.status(500).json({ error: "stats_unavailable" });
   }
 });
 

@@ -5,6 +5,19 @@ import { formatCurrency } from "@/lib/format";
 import type { PricesData } from "@/lib/holdings";
 import type { WatchlistData, WatchlistEntry } from "@/lib/watchlist";
 import type { EntryRating, Signal, SignalsData } from "@/lib/signals";
+import type { DeepDive } from "@/lib/deepdive";
+
+// "generated [time]" stamp for a deep dive. Only ever rendered after a click
+// (never during SSR), so no hydration concern with local-timezone formatting.
+const stampFmt = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+});
+function formatStamp(ms: number): string {
+  return stampFmt.format(ms);
+}
 
 // Compact currency (no forced cents) for 52-week bounds and targets.
 const moneyShort = new Intl.NumberFormat("en-US", {
@@ -128,14 +141,62 @@ function EntryRatingRow({
   );
 }
 
+function DeepDivePanel({ dive }: { dive: DeepDive }) {
+  return (
+    <div className="mt-3 flex flex-col gap-3 border-t border-[var(--color-border)] pt-3 text-xs">
+      {dive.overview && (
+        <p className="leading-relaxed text-[var(--color-text-secondary)]">
+          {dive.overview}
+        </p>
+      )}
+
+      {dive.bull.length > 0 && (
+        <div>
+          <p className="mini-label text-[var(--color-positive)]">Bull case</p>
+          <ul className="mt-1 list-disc space-y-1 pl-4 text-[var(--color-text-secondary)]">
+            {dive.bull.map((b, i) => (
+              <li key={i}>{b}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {dive.risks.length > 0 && (
+        <div>
+          <p className="mini-label text-[var(--color-negative)]">Risks</p>
+          <ul className="mt-1 list-disc space-y-1 pl-4 text-[var(--color-text-secondary)]">
+            {dive.risks.map((r, i) => (
+              <li key={i}>{r}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {dive.signalRead && (
+        <div>
+          <p className="mini-label">Signal read</p>
+          <p className="mt-1 text-[var(--color-gold)]">{dive.signalRead}</p>
+        </div>
+      )}
+
+      <p className="text-[10px] text-[var(--color-text-tertiary)]">
+        AI-generated · not financial advice · {dive.cached ? "cached" : "fresh"} ·
+        generated {formatStamp(dive.generatedAt)}
+      </p>
+    </div>
+  );
+}
+
 export default function Watchlist({
   initial,
   initialPrices,
   initialSignals,
+  initialDeepDiveCount,
 }: {
   initial: WatchlistData;
   initialPrices: PricesData | null;
   initialSignals: SignalsData | null;
+  initialDeepDiveCount: number | null;
 }) {
   const [entries, setEntries] = useState<WatchlistEntry[]>(initial.entries);
   const [prices, setPrices] = useState<PricesData | null>(initialPrices);
@@ -150,6 +211,57 @@ export default function Watchlist({
   const [addNote, setAddNote] = useState("");
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+
+  // AI deep dive — click-only, keyed by ticker.
+  const [deepDives, setDeepDives] = useState<Record<string, DeepDive>>({});
+  const [deepLoading, setDeepLoading] = useState<Record<string, boolean>>({});
+  const [deepError, setDeepError] = useState<Record<string, string | null>>({});
+  const [expandedDive, setExpandedDive] = useState<Set<string>>(new Set());
+  const [monthlyCount, setMonthlyCount] = useState<number | null>(
+    initialDeepDiveCount,
+  );
+
+  async function loadDeepDive(ticker: string) {
+    setDeepLoading((m) => ({ ...m, [ticker]: true }));
+    setDeepError((m) => ({ ...m, [ticker]: null }));
+    try {
+      const res = await fetch("/api/deep-dive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ticker }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Deep dive failed (${res.status})`);
+      }
+      const data = (await res.json()) as DeepDive;
+      setDeepDives((m) => ({ ...m, [ticker]: data }));
+      setMonthlyCount(data.monthlyCount);
+      setExpandedDive((s) => new Set(s).add(ticker));
+    } catch (err) {
+      setDeepError((m) => ({
+        ...m,
+        [ticker]: err instanceof Error ? err.message : "Deep dive unavailable.",
+      }));
+    } finally {
+      setDeepLoading((m) => ({ ...m, [ticker]: false }));
+    }
+  }
+
+  // First click generates (or returns the cached thesis); later clicks just
+  // toggle the panel — no extra request.
+  function toggleDive(ticker: string) {
+    if (!deepDives[ticker]) {
+      loadDeepDive(ticker);
+      return;
+    }
+    setExpandedDive((s) => {
+      const next = new Set(s);
+      if (next.has(ticker)) next.delete(ticker);
+      else next.add(ticker);
+      return next;
+    });
+  }
 
   function quoteFor(ticker: string): number | null {
     return prices?.quotes?.[ticker] ?? null;
@@ -424,6 +536,34 @@ export default function Watchlist({
                     {e.note}
                   </p>
                 )}
+
+                {/* AI deep dive — click to generate (the only paid-LLM action) */}
+                <div className="border-t border-[var(--color-border)] pt-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleDive(e.ticker)}
+                    disabled={deepLoading[e.ticker]}
+                    className="mini-label text-[var(--color-gold)] transition-opacity hover:opacity-80 disabled:opacity-40"
+                  >
+                    {deepLoading[e.ticker]
+                      ? "Generating…"
+                      : deepDives[e.ticker]
+                        ? expandedDive.has(e.ticker)
+                          ? "Hide deep dive"
+                          : "Show deep dive"
+                        : "Deep dive ↗"}
+                  </button>
+
+                  {deepError[e.ticker] && (
+                    <p className="mt-2 text-xs text-[var(--color-negative)]">
+                      {deepError[e.ticker]}
+                    </p>
+                  )}
+
+                  {expandedDive.has(e.ticker) && deepDives[e.ticker] && (
+                    <DeepDivePanel dive={deepDives[e.ticker]} />
+                  )}
+                </div>
               </div>
             );
           })}
@@ -436,6 +576,12 @@ export default function Watchlist({
             <p key={n}>{n}</p>
           ))}
         </div>
+      )}
+
+      {monthlyCount !== null && (
+        <p className="mt-2 px-1 text-[10px] text-[var(--color-text-tertiary)]">
+          Deep dives this month: {monthlyCount}
+        </p>
       )}
 
       <div className="mt-6">

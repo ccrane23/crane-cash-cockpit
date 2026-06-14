@@ -10,6 +10,7 @@ import {
 } from "@/lib/holdings";
 import { getWatchlist, type WatchlistData } from "@/lib/watchlist";
 import { getSignals, type SignalsData } from "@/lib/signals";
+import { getDeepDiveStats } from "@/lib/deepdive";
 import Nav from "../Nav";
 import SignOutButton from "../sign-out-button";
 import Investments from "./Investments";
@@ -28,13 +29,19 @@ export default async function InvestmentsPage() {
   // Holdings are essential; prices and the watchlist are best-effort overlays.
   // Fetch independently so a Finnhub outage (or a missing API key) still renders
   // cost-basis figures, and a watchlist hiccup doesn't blank the holdings.
-  const [holdingsResult, pricesResult, watchlistResult, signalsResult] =
-    await Promise.allSettled([
-      getHoldings(),
-      getPrices(),
-      getWatchlist(),
-      getSignals(),
-    ]);
+  const [
+    holdingsResult,
+    pricesResult,
+    watchlistResult,
+    signalsResult,
+    deepDiveStatsResult,
+  ] = await Promise.allSettled([
+    getHoldings(),
+    getPrices(),
+    getWatchlist(),
+    getSignals(),
+    getDeepDiveStats(),
+  ]);
 
   let holdings: HoldingsData | null = null;
   let error: string | null = null;
@@ -64,6 +71,16 @@ export default async function InvestmentsPage() {
     signals = signalsResult.value;
   } else {
     console.error("Failed to load signals:", describeError(signalsResult.reason));
+  }
+
+  let deepDiveCount: number | null = null;
+  if (deepDiveStatsResult.status === "fulfilled") {
+    deepDiveCount = deepDiveStatsResult.value.monthlyCount;
+  } else {
+    console.error(
+      "Failed to load deep-dive stats:",
+      describeError(deepDiveStatsResult.reason),
+    );
   }
 
   return (
@@ -101,6 +118,7 @@ export default async function InvestmentsPage() {
             initial={watchlist}
             initialPrices={prices}
             initialSignals={signals}
+            initialDeepDiveCount={deepDiveCount}
           />
         ) : (
           <section>

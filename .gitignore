@@ -43,6 +43,7 @@ yarn-error.log*
 holdings.json
 watchlist.json
 names.json
+deep-dive-cache.json
 
 # typescript
 *.tsbuildinfo
