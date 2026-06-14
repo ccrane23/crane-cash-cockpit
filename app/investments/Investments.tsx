@@ -8,6 +8,7 @@ import type {
   Lot,
   TickerRollup,
 } from "@/lib/holdings";
+import type { SignalsData } from "@/lib/signals";
 
 const sharesFmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 });
 function formatShares(n: number): string {
@@ -113,9 +114,11 @@ function TrashIcon() {
 export default function Investments({
   initial,
   initialPrices,
+  signals,
 }: {
   initial: HoldingsData;
   initialPrices: PricesData | null;
+  signals: SignalsData | null;
 }) {
   const [data, setData] = useState<HoldingsData>(initial);
   const [prices, setPrices] = useState<PricesData | null>(initialPrices);
@@ -337,7 +340,15 @@ export default function Investments({
               >
                 <div className="flex items-start justify-between gap-4 px-5 py-4">
                   <div className="min-w-0">
-                    <p className="text-[var(--color-text)]">{p.ticker}</p>
+                    <p className="truncate text-[var(--color-text)]">
+                      {p.ticker}
+                      {signals?.signals?.[p.ticker]?.name && (
+                        <span className="text-[var(--color-text-tertiary)]">
+                          {" — "}
+                          {signals.signals[p.ticker]?.name}
+                        </span>
+                      )}
+                    </p>
                     <p className="mt-1 text-xs tabular-nums text-[var(--color-text-tertiary)]">
                       {formatShares(p.totalShares)} sh
                       {" · "}

@@ -4,74 +4,32 @@ import { useState } from "react";
 import { formatCurrency } from "@/lib/format";
 import type { PricesData } from "@/lib/holdings";
 import type { WatchlistData, WatchlistEntry } from "@/lib/watchlist";
+import type { Signal, SignalsData } from "@/lib/signals";
 
-// Zone bounds render without forced cents ("$370", "$63.5") to stay readable.
-const zoneFmt = new Intl.NumberFormat("en-US", {
+// Compact currency (no forced cents) for 52-week bounds and targets.
+const moneyShort = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
   minimumFractionDigits: 0,
   maximumFractionDigits: 2,
 });
 
-function formatZone(low: number | null, high: number | null): string {
-  if (low === null && high === null) return "No set zone";
-  if (low !== null && high !== null)
-    return `${zoneFmt.format(low)}–${zoneFmt.format(high)}`;
-  if (low !== null) return `≥ ${zoneFmt.format(low)}`;
-  return `≤ ${zoneFmt.format(high as number)}`;
-}
-
-type ZoneStatus = "below" | "in" | "above" | null;
-
-// null status = no badge: either no zone is set (space ETFs) or we have no live
-// price to compare against.
-function zoneStatus(
-  price: number | null,
-  low: number | null,
-  high: number | null,
-): ZoneStatus {
-  if (low === null && high === null) return null;
-  if (price === null) return null;
-  if (low !== null && price < low) return "below";
-  if (high !== null && price > high) return "above";
-  return "in";
-}
-
-// "" → null (no bound); a non-number → undefined (invalid, caller rejects).
-function parseZoneInput(s: string): number | null | undefined {
-  const t = s.trim();
-  if (t === "") return null;
-  const n = Number(t);
-  return Number.isFinite(n) && n >= 0 ? n : undefined;
-}
-
 const inputClass =
   "w-full border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] outline-none focus:border-[var(--color-gold)] tabular-nums";
 
-function StatusBadge({ status }: { status: ZoneStatus }) {
-  if (status === null) return null;
-  const base =
-    "inline-flex items-center px-2 py-0.5 text-[10px] uppercase tracking-wider";
-  if (status === "below") {
-    return (
-      <span className={`${base} border border-[var(--color-positive)] text-[var(--color-positive)]`}>
-        Below zone
-      </span>
-    );
-  }
-  if (status === "in") {
-    // The "act now" signal — brand gold, filled for maximum emphasis.
-    return (
-      <span className={`${base} bg-[var(--color-gold)] font-medium text-[var(--color-bg)]`}>
-        In zone
-      </span>
-    );
-  }
-  return (
-    <span className={`${base} border border-[var(--color-border)] text-[var(--color-text-tertiary)]`}>
-      Above zone
-    </span>
-  );
+function clamp(n: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, n));
+}
+
+function signedPct(n: number): string {
+  return `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`;
+}
+
+// RSI tone: ≤30 oversold (opportunity, teal), ≥70 overbought (red), else neutral.
+function rsiTone(rsi: number): { label: string; color: string } {
+  if (rsi <= 30) return { label: "oversold", color: "var(--color-positive)" };
+  if (rsi >= 70) return { label: "overbought", color: "var(--color-negative)" };
+  return { label: "neutral", color: "var(--color-text-secondary)" };
 }
 
 function TrashIcon() {
@@ -96,51 +54,74 @@ function TrashIcon() {
   );
 }
 
-function PencilIcon() {
+// Price vs a moving average: directional arrow + distance, colored by direction.
+function MaCell({ label, price, ma }: { label: string; price: number | null; ma: number | null }) {
+  let body = <span className="text-[var(--color-text-tertiary)]">—</span>;
+  if (price !== null && ma !== null && ma > 0) {
+    const diff = ((price - ma) / ma) * 100;
+    const above = price >= ma;
+    body = (
+      <span
+        className="tabular-nums"
+        style={{ color: above ? "var(--color-positive)" : "var(--color-negative)" }}
+        title={`Price vs ${label} SMA (${formatCurrency(ma)})`}
+      >
+        {above ? "▲" : "▼"} {signedPct(diff)}
+      </span>
+    );
+  }
   return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-    </svg>
+    <div className="min-w-0">
+      <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-tertiary)]">
+        {label}
+      </p>
+      <p className="text-xs">{body}</p>
+    </div>
   );
+}
+
+// Informational "read": how many simple signals lean toward a reasonable entry.
+// NOT advice — just a count of below-200DMA, RSI under 40, and below mean target.
+function entryRead(
+  price: number | null,
+  s: Signal,
+): { count: number; total: number } {
+  let count = 0;
+  let total = 0;
+  if (price !== null && s.ma200 !== null) {
+    total++;
+    if (price < s.ma200) count++;
+  }
+  if (s.rsi14 !== null) {
+    total++;
+    if (s.rsi14 < 40) count++;
+  }
+  if (price !== null && s.priceTarget?.mean != null) {
+    total++;
+    if (price < s.priceTarget.mean) count++;
+  }
+  return { count, total };
 }
 
 export default function Watchlist({
   initial,
   initialPrices,
+  initialSignals,
 }: {
   initial: WatchlistData;
   initialPrices: PricesData | null;
+  initialSignals: SignalsData | null;
 }) {
   const [entries, setEntries] = useState<WatchlistEntry[]>(initial.entries);
   const [prices, setPrices] = useState<PricesData | null>(initialPrices);
+  const [signals, setSignals] = useState<SignalsData | null>(initialSignals);
   const [listError, setListError] = useState<string | null>(null);
 
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  // Inline edit (one card at a time).
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editLow, setEditLow] = useState("");
-  const [editHigh, setEditHigh] = useState("");
-  const [editNote, setEditNote] = useState("");
-  const [savingId, setSavingId] = useState<string | null>(null);
-  const [editError, setEditError] = useState<string | null>(null);
-
   // Add control.
   const [addTicker, setAddTicker] = useState("");
-  const [addLow, setAddLow] = useState("");
-  const [addHigh, setAddHigh] = useState("");
   const [addNote, setAddNote] = useState("");
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
@@ -148,50 +129,8 @@ export default function Watchlist({
   function quoteFor(ticker: string): number | null {
     return prices?.quotes?.[ticker] ?? null;
   }
-
-  function startEdit(entry: WatchlistEntry) {
-    setEditError(null);
-    setConfirmId(null);
-    setEditingId(entry.id);
-    setEditLow(entry.zoneLow === null ? "" : String(entry.zoneLow));
-    setEditHigh(entry.zoneHigh === null ? "" : String(entry.zoneHigh));
-    setEditNote(entry.note ?? "");
-  }
-
-  async function saveEdit(id: string) {
-    setEditError(null);
-    const low = parseZoneInput(editLow);
-    const high = parseZoneInput(editHigh);
-    if (low === undefined || high === undefined) {
-      return setEditError("Zones must be non-negative numbers or blank.");
-    }
-    if (low !== null && high !== null && low > high) {
-      return setEditError("Low must not exceed high.");
-    }
-
-    setSavingId(id);
-    try {
-      const res = await fetch(`/api/watchlist/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          zoneLow: low,
-          zoneHigh: high,
-          note: editNote.trim(),
-        }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || `Save failed (${res.status})`);
-      }
-      const { entry } = (await res.json()) as { entry: WatchlistEntry };
-      setEntries((prev) => prev.map((e) => (e.id === id ? entry : e)));
-      setEditingId(null);
-    } catch (err) {
-      setEditError(err instanceof Error ? err.message : "Could not save.");
-    } finally {
-      setSavingId(null);
-    }
+  function signalFor(ticker: string): Signal | null {
+    return signals?.signals?.[ticker] ?? null;
   }
 
   async function doDelete(id: string) {
@@ -217,14 +156,6 @@ export default function Watchlist({
   async function addEntry() {
     setAddError(null);
     if (!addTicker.trim()) return setAddError("Ticker is required.");
-    const low = parseZoneInput(addLow);
-    const high = parseZoneInput(addHigh);
-    if (low === undefined || high === undefined) {
-      return setAddError("Zones must be non-negative numbers or blank.");
-    }
-    if (low !== null && high !== null && low > high) {
-      return setAddError("Low must not exceed high.");
-    }
 
     setAdding(true);
     try {
@@ -233,8 +164,6 @@ export default function Watchlist({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ticker: addTicker.trim().toUpperCase(),
-          zoneLow: low,
-          zoneHigh: high,
           note: addNote.trim() || undefined,
         }),
       });
@@ -245,18 +174,22 @@ export default function Watchlist({
       const { entry } = (await res.json()) as { entry: WatchlistEntry };
       setEntries((prev) => [...prev, entry]);
 
-      // A brand-new ticker isn't in the price cache yet; pull quotes so its card
-      // gets a live price without a full reload. Best-effort.
+      // Pull price + signals so the new card isn't blank. Best-effort; signals
+      // may take a moment to compute on a cold cache.
       try {
         const pr = await fetch("/api/prices", { cache: "no-store" });
         if (pr.ok) setPrices((await pr.json()) as PricesData);
       } catch {
-        // leave prices as-is; the card just shows "—" until next refresh
+        /* leave prices as-is */
+      }
+      try {
+        const sr = await fetch("/api/signals", { cache: "no-store" });
+        if (sr.ok) setSignals((await sr.json()) as SignalsData);
+      } catch {
+        /* leave signals as-is */
       }
 
       setAddTicker("");
-      setAddLow("");
-      setAddHigh("");
       setAddNote("");
     } catch (err) {
       setAddError(
@@ -267,11 +200,16 @@ export default function Watchlist({
     }
   }
 
+  // Whether any premium-only signal source is confirmed unavailable on our tier.
+  const tier = signals?.tier;
+  const premiumHidden =
+    tier && (tier.candle === false || tier.priceTarget === false);
+
   return (
     <section>
       <div className="mb-3 flex items-baseline justify-between px-1">
         <p className="mini-label">Watchlist</p>
-        <p className="mini-label">buy zones</p>
+        <p className="mini-label">signals · not advice</p>
       </div>
 
       {listError && (
@@ -288,165 +226,180 @@ export default function Watchlist({
         <div className="grid grid-cols-1 gap-px bg-[var(--color-border)] sm:grid-cols-2 lg:grid-cols-3">
           {entries.map((e) => {
             const price = quoteFor(e.ticker);
-            const status = zoneStatus(price, e.zoneLow, e.zoneHigh);
-            const isEditing = editingId === e.id;
+            const s = signalFor(e.ticker);
+
+            // 52-week range position (0 = at low, 100 = at high).
+            let pos52: number | null = null;
+            if (
+              price !== null &&
+              s?.high52 != null &&
+              s?.low52 != null &&
+              s.high52 > s.low52
+            ) {
+              pos52 = clamp(((price - s.low52) / (s.high52 - s.low52)) * 100, 0, 100);
+            }
+
+            const read = s ? entryRead(price, s) : { count: 0, total: 0 };
+            const leaningEntry = read.total >= 2 && read.count >= 2;
+
+            const tone = s?.rsi14 != null ? rsiTone(s.rsi14) : null;
+
+            const target = s?.priceTarget?.mean ?? null;
+            const upside =
+              target !== null && price !== null && price > 0
+                ? ((target - price) / price) * 100
+                : null;
 
             return (
               <div
                 key={e.id}
-                className={`flex flex-col gap-3 bg-[var(--color-surface)] p-4 ${
-                  status === "in"
-                    ? "ring-1 ring-inset ring-[var(--color-gold)]"
-                    : ""
-                }`}
+                className="flex flex-col gap-3 bg-[var(--color-surface)] p-4"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-[var(--color-text)]">{e.ticker}</p>
-                    {e.stale && (
-                      <p className="mt-0.5 text-[10px] uppercase tracking-wider text-[var(--color-text-tertiary)]">
-                        stale — verify
-                      </p>
+                  <p className="min-w-0 truncate text-[var(--color-text)]">
+                    {e.ticker}
+                    {s?.name && (
+                      <span className="text-[var(--color-text-tertiary)]">
+                        {" — "}
+                        {s.name}
+                      </span>
                     )}
-                  </div>
-                  {!isEditing && (
-                    <div className="flex shrink-0 items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => startEdit(e)}
-                        aria-label={`Edit ${e.ticker} zone`}
-                        title="Edit zone"
-                        className="text-[var(--color-text-tertiary)] transition-colors hover:text-[var(--color-gold)]"
-                      >
-                        <PencilIcon />
-                      </button>
-                      {confirmId === e.id ? (
-                        <span className="flex items-center gap-2 text-xs">
-                          <button
-                            type="button"
-                            onClick={() => doDelete(e.id)}
-                            disabled={deletingId === e.id}
-                            className="text-[var(--color-negative)] transition-opacity hover:opacity-80 disabled:opacity-40"
-                          >
-                            {deletingId === e.id ? "…" : "Yes"}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setConfirmId(null)}
-                            className="text-[var(--color-text-tertiary)] transition-colors hover:text-[var(--color-text-secondary)]"
-                          >
-                            No
-                          </button>
-                        </span>
-                      ) : (
+                  </p>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {confirmId === e.id ? (
+                      <span className="flex items-center gap-2 text-xs">
                         <button
                           type="button"
-                          onClick={() => {
-                            setListError(null);
-                            setConfirmId(e.id);
-                          }}
-                          aria-label={`Delete ${e.ticker}`}
-                          title="Delete"
-                          className="text-[var(--color-text-tertiary)] transition-colors hover:text-[var(--color-negative)]"
+                          onClick={() => doDelete(e.id)}
+                          disabled={deletingId === e.id}
+                          className="text-[var(--color-negative)] transition-opacity hover:opacity-80 disabled:opacity-40"
                         >
-                          <TrashIcon />
+                          {deletingId === e.id ? "…" : "Yes"}
                         </button>
-                      )}
-                    </div>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmId(null)}
+                          className="text-[var(--color-text-tertiary)] transition-colors hover:text-[var(--color-text-secondary)]"
+                        >
+                          No
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setListError(null);
+                          setConfirmId(e.id);
+                        }}
+                        aria-label={`Remove ${e.ticker}`}
+                        title="Remove from watchlist"
+                        className="text-[var(--color-text-tertiary)] transition-colors hover:text-[var(--color-negative)]"
+                      >
+                        <TrashIcon />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-end justify-between gap-2">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-tertiary)]">
+                      Price
+                    </p>
+                    <p className="text-lg tabular-nums text-[var(--color-text)]">
+                      {price !== null ? formatCurrency(price) : "—"}
+                    </p>
+                  </div>
+                  {leaningEntry && (
+                    <span
+                      className="inline-flex items-center bg-[var(--color-gold)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[var(--color-bg)]"
+                      title={`${read.count} of ${read.total} entry signals: below 200-day, RSI < 40, below mean target`}
+                    >
+                      Leaning entry
+                    </span>
                   )}
                 </div>
 
-                {isEditing ? (
-                  <div className="flex flex-col gap-2">
-                    <div className="grid grid-cols-2 gap-2">
-                      <label className="block">
-                        <span className="mini-label">Low</span>
-                        <input
-                          type="number"
-                          inputMode="decimal"
-                          min="0"
-                          step="any"
-                          value={editLow}
-                          onChange={(ev) => setEditLow(ev.target.value)}
-                          placeholder="—"
-                          className={`mt-1 ${inputClass}`}
-                        />
-                      </label>
-                      <label className="block">
-                        <span className="mini-label">High</span>
-                        <input
-                          type="number"
-                          inputMode="decimal"
-                          min="0"
-                          step="any"
-                          value={editHigh}
-                          onChange={(ev) => setEditHigh(ev.target.value)}
-                          placeholder="—"
-                          className={`mt-1 ${inputClass}`}
-                        />
-                      </label>
-                    </div>
-                    <label className="block">
-                      <span className="mini-label">Note</span>
-                      <input
-                        value={editNote}
-                        onChange={(ev) => setEditNote(ev.target.value)}
-                        placeholder="optional"
-                        className={`mt-1 ${inputClass}`}
-                      />
-                    </label>
-                    {editError && (
-                      <p className="text-xs text-[var(--color-negative)]">
-                        {editError}
-                      </p>
-                    )}
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => saveEdit(e.id)}
-                        disabled={savingId === e.id}
-                        className="bg-[var(--color-gold)] px-3 py-1.5 text-sm font-medium text-[var(--color-bg)] transition-opacity hover:opacity-90 disabled:opacity-40"
-                      >
-                        {savingId === e.id ? "Saving…" : "Save"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setEditingId(null)}
-                        className="px-2 py-1.5 text-sm text-[var(--color-text-tertiary)] transition-colors hover:text-[var(--color-text-secondary)]"
-                      >
-                        Cancel
-                      </button>
-                    </div>
+                {/* 52-week range */}
+                <div>
+                  <div className="flex items-baseline justify-between text-[10px] uppercase tracking-wider text-[var(--color-text-tertiary)]">
+                    <span>52-week</span>
+                    <span className="tabular-nums">
+                      {pos52 !== null ? `${Math.round(pos52)}%` : "—"}
+                    </span>
                   </div>
-                ) : (
-                  <>
-                    <div className="flex items-end justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="text-xs text-[var(--color-text-tertiary)]">
-                          Buy zone
-                        </p>
-                        <p className="tabular-nums text-[var(--color-text)]">
-                          {formatZone(e.zoneLow, e.zoneHigh)}
-                        </p>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <p className="text-xs text-[var(--color-text-tertiary)]">
-                          Price
-                        </p>
-                        <p className="tabular-nums text-[var(--color-text)]">
-                          {price !== null ? formatCurrency(price) : "—"}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <StatusBadge status={status} />
-                      {e.note && (
-                        <p className="truncate text-xs text-[var(--color-text-tertiary)]">
-                          {e.note}
-                        </p>
+                  <div className="mt-1 h-1 w-full overflow-hidden bg-[var(--color-bg)]">
+                    {pos52 !== null && (
+                      <div
+                        className="h-full bg-[var(--color-gold)]"
+                        style={{ width: `${pos52}%` }}
+                      />
+                    )}
+                  </div>
+                  <div className="mt-0.5 flex justify-between text-[10px] tabular-nums text-[var(--color-text-tertiary)]">
+                    <span>{s?.low52 != null ? moneyShort.format(s.low52) : "—"}</span>
+                    <span>{s?.high52 != null ? moneyShort.format(s.high52) : "—"}</span>
+                  </div>
+                </div>
+
+                {/* Moving averages + RSI */}
+                <div className="grid grid-cols-3 gap-2">
+                  <MaCell label="50D" price={price} ma={s?.ma50 ?? null} />
+                  <MaCell label="200D" price={price} ma={s?.ma200 ?? null} />
+                  <div className="min-w-0">
+                    <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-tertiary)]">
+                      RSI 14
+                    </p>
+                    <p className="text-xs tabular-nums" style={{ color: tone?.color }}>
+                      {s?.rsi14 != null ? `${s.rsi14.toFixed(0)}` : "—"}
+                      {tone && (
+                        <span className="text-[10px]"> · {tone.label}</span>
                       )}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Analyst consensus (if our tier exposes it) */}
+                {(s?.priceTarget?.mean != null || s?.recommendation?.label) && (
+                  <div className="flex items-end justify-between gap-2 border-t border-[var(--color-border)] pt-2">
+                    <div className="min-w-0">
+                      <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-tertiary)]">
+                        Avg target
+                      </p>
+                      <p className="text-xs tabular-nums text-[var(--color-text)]">
+                        {target !== null ? moneyShort.format(target) : "—"}
+                        {upside !== null && (
+                          <span
+                            style={{
+                              color:
+                                upside >= 0
+                                  ? "var(--color-positive)"
+                                  : "var(--color-negative)",
+                            }}
+                          >
+                            {" "}
+                            {signedPct(upside)}
+                          </span>
+                        )}
+                      </p>
                     </div>
-                  </>
+                    {s?.recommendation?.label && (
+                      <div className="shrink-0 text-right">
+                        <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-tertiary)]">
+                          Analysts
+                        </p>
+                        <p className="text-xs text-[var(--color-text-secondary)]">
+                          {s.recommendation.label}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {e.note && (
+                  <p className="truncate text-xs text-[var(--color-text-tertiary)]">
+                    {e.note}
+                  </p>
                 )}
               </div>
             );
@@ -454,12 +407,19 @@ export default function Watchlist({
         </div>
       )}
 
+      {premiumHidden && (
+        <p className="mt-2 px-1 text-[10px] text-[var(--color-text-tertiary)]">
+          Some signals (moving averages, RSI, and/or analyst targets) require a
+          paid Finnhub plan and are hidden on the current tier.
+        </p>
+      )}
+
       <div className="mt-6">
         <div className="mb-3 flex items-baseline justify-between px-1">
           <p className="mini-label">Add to watchlist</p>
         </div>
         <div className="bg-[var(--color-surface)] p-5 sm:p-6">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="mini-label">Ticker</span>
               <input
@@ -468,32 +428,6 @@ export default function Watchlist({
                 placeholder="AAPL"
                 autoCapitalize="characters"
                 className={`mt-2 ${inputClass} uppercase`}
-              />
-            </label>
-            <label className="block">
-              <span className="mini-label">Zone low</span>
-              <input
-                type="number"
-                inputMode="decimal"
-                min="0"
-                step="any"
-                value={addLow}
-                onChange={(e) => setAddLow(e.target.value)}
-                placeholder="optional"
-                className={`mt-2 ${inputClass}`}
-              />
-            </label>
-            <label className="block">
-              <span className="mini-label">Zone high</span>
-              <input
-                type="number"
-                inputMode="decimal"
-                min="0"
-                step="any"
-                value={addHigh}
-                onChange={(e) => setAddHigh(e.target.value)}
-                placeholder="optional"
-                className={`mt-2 ${inputClass}`}
               />
             </label>
             <label className="block">
@@ -508,9 +442,7 @@ export default function Watchlist({
           </div>
 
           {addError && (
-            <p className="mt-4 text-sm text-[var(--color-negative)]">
-              {addError}
-            </p>
+            <p className="mt-4 text-sm text-[var(--color-negative)]">{addError}</p>
           )}
 
           <button

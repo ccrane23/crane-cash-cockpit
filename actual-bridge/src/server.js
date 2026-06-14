@@ -14,6 +14,7 @@ import {
   ValidationError as WatchlistValidationError,
 } from "./watchlist.js";
 import { getQuotes } from "./prices.js";
+import { getSignals } from "./signals.js";
 
 
 // Safety net: the Actual SDK can emit async errors that escape try/catch and
@@ -185,7 +186,22 @@ app.get("/prices", requireBearer, async (req, res) => {
   }
 });
 
-// Watchlist — buy-zone targets. Same Bearer auth as the rest.
+// Data-driven signals (name, 52w range, SMAs, RSI, analyst) for every held or
+// watched ticker. Computed from Finnhub, cached ~8h. ?force=true bypasses cache.
+// Premium-only fields degrade to null — see the `tier` flags in the response.
+app.get("/signals", requireBearer, async (req, res) => {
+  try {
+    const { rollups } = getHoldings();
+    const tickers = [...rollups.map((r) => r.ticker), ...getWatchlistTickers()];
+    const force = req.query.force === "true";
+    res.json(await getSignals(tickers, { force }));
+  } catch (err) {
+    console.error("[bridge] /signals failed:", err);
+    res.status(502).json({ error: "signals_unavailable" });
+  }
+});
+
+// Watchlist — tracked tickers. Same Bearer auth as the rest.
 app.get("/watchlist", requireBearer, (_req, res) => {
   try {
     res.json(getWatchlist());
