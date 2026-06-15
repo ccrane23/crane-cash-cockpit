@@ -84,52 +84,56 @@ export default async function InvestmentsPage() {
   }
 
   return (
-    <main className="flex flex-1 flex-col p-6 sm:p-10">
-      <header className="flex items-baseline justify-between border-b border-[var(--color-border)] pb-4">
+    <main className="flex flex-1 flex-col">
+      <header className="sticky top-0 z-30 flex items-start justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-bg)] px-6 pb-4 pt-6 sm:px-10 sm:pt-10">
         <div>
-          <p className="mini-label">Crane Cash Cockpit</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-brand)]">
+            Crane Cash
+          </p>
           <h1 className="mt-1 text-xl font-medium text-[var(--color-text)]">
             Investments
           </h1>
         </div>
-        <div className="flex items-center gap-5">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <Nav />
           <SignOutButton />
         </div>
       </header>
 
-      {error ? (
-        <p className="mt-8 text-[var(--color-negative)]">{error}</p>
-      ) : holdings ? (
-        <div className="mt-6">
-          <Investments
-            initial={holdings}
-            initialPrices={prices}
-            signals={signals}
-          />
-        </div>
-      ) : (
-        <p className="mt-8 text-[var(--color-text-secondary)]">Loading…</p>
-      )}
-
-      <div className="mt-10">
-        {watchlist ? (
-          <Watchlist
-            initial={watchlist}
-            initialPrices={prices}
-            initialSignals={signals}
-            initialDeepDiveCount={deepDiveCount}
-          />
+      <div className="px-6 pb-6 sm:px-10 sm:pb-10">
+        {error ? (
+          <p className="mt-8 text-[var(--color-negative)]">{error}</p>
+        ) : holdings ? (
+          <div className="mt-6">
+            <Investments
+              initial={holdings}
+              initialPrices={prices}
+              signals={signals}
+            />
+          </div>
         ) : (
-          <section>
-            <div className="mb-3 px-1">
-              <p className="mini-label">Watchlist</p>
-            </div>
-            <p className="bg-[var(--color-surface)] px-5 py-4 text-sm text-[var(--color-text-tertiary)]">
-              Watchlist is unavailable right now.
-            </p>
-          </section>
+          <p className="mt-8 text-[var(--color-text-secondary)]">Loading…</p>
         )}
+
+        <div className="mt-10">
+          {watchlist ? (
+            <Watchlist
+              initial={watchlist}
+              initialPrices={prices}
+              initialSignals={signals}
+              initialDeepDiveCount={deepDiveCount}
+            />
+          ) : (
+            <section>
+              <div className="mb-3 px-1">
+                <p className="section-label">Watchlist</p>
+              </div>
+              <p className="bg-[var(--color-surface)] px-5 py-4 text-sm text-[var(--color-text-tertiary)]">
+                Watchlist is unavailable right now.
+              </p>
+            </section>
+          )}
+        </div>
       </div>
     </main>
   );

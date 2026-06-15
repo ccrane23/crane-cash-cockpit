@@ -279,7 +279,7 @@ export default function Investments({
     <div className="flex flex-col gap-px">
       <section>
         <div className="mb-3 flex items-center justify-between gap-3 px-1">
-          <p className="mini-label">Holdings</p>
+          <p className="section-label">Holdings</p>
           <div className="flex items-center gap-3">
             <span className="text-xs text-[var(--color-text-tertiary)]">
               {priceStatus}
@@ -296,7 +296,7 @@ export default function Investments({
         </div>
 
         {priced.length > 0 && (
-          <div className="mb-px bg-[var(--color-surface)] p-5 sm:p-6">
+          <div className="mb-3 rounded-md border border-[var(--color-gold)]/55 bg-[var(--color-surface)] p-5 sm:p-6">
             <div className="flex items-baseline justify-between">
               <p className="mini-label">Market value</p>
               <p className="mini-label">Unrealized P&amp;L</p>
@@ -322,12 +322,12 @@ export default function Investments({
         )}
 
         {listError && (
-          <p className="mb-px bg-[var(--color-surface)] px-5 py-3 text-sm text-[var(--color-negative)]">
+          <p className="mb-3 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-5 py-3 text-sm text-[var(--color-negative)]">
             {listError}
           </p>
         )}
 
-        <div className="bg-[var(--color-surface)]">
+        <div className="overflow-hidden rounded-md border border-[var(--color-gold)]/55 bg-[var(--color-surface)]">
           {positions.length === 0 ? (
             <p className="px-5 py-4 text-sm text-[var(--color-text-tertiary)]">
               No holdings yet. Add your first purchase below.
@@ -343,13 +343,13 @@ export default function Investments({
                     <p className="truncate text-[var(--color-text)]">
                       {p.ticker}
                       {signals?.signals?.[p.ticker]?.name && (
-                        <span className="text-[var(--color-text-tertiary)]">
+                        <span className="text-[var(--color-detail)]">
                           {" — "}
                           {signals.signals[p.ticker]?.name}
                         </span>
                       )}
                     </p>
-                    <p className="mt-1 text-xs tabular-nums text-[var(--color-text-tertiary)]">
+                    <p className="mt-1 text-xs tabular-nums text-[var(--color-detail)]">
                       {formatShares(p.totalShares)} sh
                       {" · "}
                       {p.weightedAvgCost !== null
@@ -391,7 +391,7 @@ export default function Investments({
                       key={lot.id}
                       className="flex items-center justify-between gap-3 px-5 py-2 text-xs"
                     >
-                      <span className="min-w-0 truncate tabular-nums text-[var(--color-text-secondary)]">
+                      <span className="min-w-0 truncate tabular-nums text-[var(--color-detail)]">
                         {lot.purchaseDate} · {formatShares(lot.shares)} @{" "}
                         {formatCurrency(lot.pricePerShare)}
                         {lot.basisUnknown && (
@@ -454,7 +454,7 @@ export default function Investments({
 
       <section className="mt-6">
         <div className="mb-3 flex items-baseline justify-between px-1">
-          <p className="mini-label">Add purchase</p>
+          <p className="section-label">Add purchase</p>
         </div>
 
         <div className="bg-[var(--color-surface)] p-5 sm:p-6">

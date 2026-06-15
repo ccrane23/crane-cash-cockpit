@@ -23,7 +23,7 @@ export default function Dashboard({ data }: { data: DashboardData }) {
     <div className="flex flex-col gap-px">
       <section>
         <div className="mb-px flex items-baseline justify-between px-1 pb-3">
-          <p className="mini-label">Safe to spend</p>
+          <p className="section-label">Safe to spend</p>
         </div>
         {data.safeToSpend ? (
           <SafeToSpend data={data.safeToSpend} />
@@ -37,7 +37,7 @@ export default function Dashboard({ data }: { data: DashboardData }) {
 
       <section className="mt-6">
         <div className="mb-px flex items-baseline justify-between px-1 pb-3">
-          <p className="mini-label">Month to date</p>
+          <p className="section-label">Month to date</p>
           <p className="mini-label">{formatMonthLabel(data.month)}</p>
         </div>
         <StatCards
@@ -48,7 +48,7 @@ export default function Dashboard({ data }: { data: DashboardData }) {
 
       <section className="mt-6">
         <div className="mb-3 flex items-baseline justify-between px-1">
-          <p className="mini-label">Categories</p>
+          <p className="section-label">Categories</p>
           <p className="mini-label">vs trailing 3-mo avg</p>
         </div>
         <CategoriesTable
@@ -61,7 +61,7 @@ export default function Dashboard({ data }: { data: DashboardData }) {
 
       <section className="mt-6">
         <div className="mb-3 flex items-baseline justify-between px-1">
-          <p className="mini-label">Spending history</p>
+          <p className="section-label">Spending history</p>
           <p className="mini-label">12 months</p>
         </div>
         <HistoryChart series={data.history} />
@@ -70,7 +70,7 @@ export default function Dashboard({ data }: { data: DashboardData }) {
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
         <section>
           <div className="mb-3 flex items-baseline justify-between px-1">
-            <p className="mini-label">Recent activity</p>
+            <p className="section-label">Recent activity</p>
           </div>
           <RecentActivity
             items={data.recent}
@@ -80,7 +80,7 @@ export default function Dashboard({ data }: { data: DashboardData }) {
 
         <section>
           <div className="mb-3 flex items-baseline justify-between px-1">
-            <p className="mini-label">Upcoming bills</p>
+            <p className="section-label">Upcoming bills</p>
             <p className="mini-label">projected</p>
           </div>
           <UpcomingBills

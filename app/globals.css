@@ -14,6 +14,8 @@
   --color-positive: #14a89e;
   --color-negative: #e85850;
   --color-gold: #c9a96e;
+  --color-brand: #1c9e6d; /* money green — wordmark + spend-trend line */
+  --color-detail: #b8b8b8; /* mid-bright neutral for secondary detail text */
 
   --font-mono:
     ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
@@ -31,12 +33,22 @@ body {
   font-family: var(--font-mono);
 }
 
-/* Uppercase letter-spaced mini-label for section headers. */
+/* Dim uppercase mini-label for small captions and right-side annotations. */
 .mini-label {
   text-transform: uppercase;
   letter-spacing: 0.18em;
   font-size: 0.6875rem;
   color: var(--color-text-tertiary);
+}
+
+/* Brighter, bolder label for primary section headers so each section reads
+   clearly. Used for the left-side titles (SAFE TO SPEND, HOLDINGS, etc.). */
+.section-label {
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #d0d0d0;
 }
 
 /* Drill-down drawer transitions. */

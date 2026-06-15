@@ -350,8 +350,7 @@ export default function Watchlist({
   return (
     <section>
       <div className="mb-3 flex items-baseline justify-between px-1">
-        <p className="mini-label">Watchlist</p>
-        <p className="mini-label">signals · not advice</p>
+        <p className="section-label">Watchlist</p>
       </div>
 
       {listError && (
@@ -398,7 +397,7 @@ export default function Watchlist({
                   <p className="min-w-0 truncate text-[var(--color-text)]">
                     {e.ticker}
                     {s?.name && (
-                      <span className="text-[var(--color-text-tertiary)]">
+                      <span className="text-[var(--color-detail)]">
                         {" — "}
                         {s.name}
                       </span>
@@ -586,7 +585,7 @@ export default function Watchlist({
 
       <div className="mt-6">
         <div className="mb-3 flex items-baseline justify-between px-1">
-          <p className="mini-label">Add to watchlist</p>
+          <p className="section-label">Add to watchlist</p>
         </div>
         <div className="bg-[var(--color-surface)] p-5 sm:p-6">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

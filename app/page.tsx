@@ -123,30 +123,34 @@ export default async function Home() {
   }
 
   return (
-    <main className="flex flex-1 flex-col p-6 sm:p-10">
-      <header className="flex items-baseline justify-between border-b border-[var(--color-border)] pb-4">
+    <main className="flex flex-1 flex-col">
+      <header className="sticky top-0 z-30 flex items-start justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-bg)] px-6 pb-4 pt-6 sm:px-10 sm:pt-10">
         <div>
-          <p className="mini-label">Crane Cash Cockpit</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-brand)]">
+            Crane Cash
+          </p>
           <h1 className="mt-1 text-xl font-medium text-[var(--color-text)]">
             Dashboard
           </h1>
           {syncStatus && <SyncStatus status={syncStatus} now={now} />}
         </div>
-        <div className="flex items-center gap-5">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <Nav />
           <SignOutButton />
         </div>
       </header>
 
-      {error ? (
-        <p className="mt-8 text-[var(--color-negative)]">{error}</p>
-      ) : data ? (
-        <div className="mt-6">
-          <Dashboard data={data} />
-        </div>
-      ) : (
-        <p className="mt-8 text-[var(--color-text-secondary)]">Loading…</p>
-      )}
+      <div className="px-6 pb-6 sm:px-10 sm:pb-10">
+        {error ? (
+          <p className="mt-8 text-[var(--color-negative)]">{error}</p>
+        ) : data ? (
+          <div className="mt-6">
+            <Dashboard data={data} />
+          </div>
+        ) : (
+          <p className="mt-8 text-[var(--color-text-secondary)]">Loading…</p>
+        )}
+      </div>
     </main>
   );
 }

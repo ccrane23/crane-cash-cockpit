@@ -39,7 +39,9 @@ export default function LoginPage() {
         onSubmit={handleSubmit}
         className="w-full max-w-sm border border-[var(--color-border)] bg-[var(--color-surface)] p-8"
       >
-        <p className="mini-label">Crane Cash Cockpit</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-brand)]">
+          Crane Cash
+        </p>
         <h1 className="mt-2 text-lg font-medium text-[var(--color-text)]">
           Enter password
         </h1>
