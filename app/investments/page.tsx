@@ -85,19 +85,19 @@ export default async function InvestmentsPage() {
 
   return (
     <main className="flex flex-1 flex-col">
-      <header className="sticky top-0 z-30 flex items-start justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-bg)] px-6 pb-4 pt-6 sm:px-10 sm:pt-10">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-brand)]">
-            Crane Cash
-          </p>
-          <h1 className="mt-1 text-xl font-medium text-[var(--color-text)]">
-            Investments
-          </h1>
-        </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <Nav />
+      <header className="sticky top-0 z-30 flex flex-col gap-3 border-b border-[var(--color-border)] bg-[var(--color-bg)] px-6 pb-4 pt-6 sm:px-10 sm:pt-10">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-brand)]">
+              Crane Cash
+            </p>
+            <h1 className="mt-1 text-xl font-medium text-[var(--color-text)]">
+              Investments
+            </h1>
+          </div>
           <SignOutButton />
         </div>
+        <Nav />
       </header>
 
       <div className="px-6 pb-6 sm:px-10 sm:pb-10">

@@ -9,7 +9,8 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: "Crane Cash",
     start_url: "/",
     display: "standalone",
-    // Dark so the native PWA splash matches the in-app crane splash (#0a0a0a).
+    // Dark PWA chrome (status bar + native splash background) to match the dark
+    // app UI. The in-app gold splash overlay is handled in Splash.tsx.
     background_color: "#0a0a0a",
     theme_color: "#0a0a0a",
     icons: [

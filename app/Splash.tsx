@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from "react";
 
-// Minimal branded splash: the gold crane centered on the dark background, with a
-// quick smooth fade-out into the app. Rendered once on initial load (it lives in
-// the root layout, so client navigations don't re-trigger it). It's visible in
-// the server HTML immediately, then fades shortly after mount — so returning
-// users see it for well under ~1.5s.
+// Branded splash: the full screen becomes the gold app-icon tile (its
+// dimensional gold gradient with the black crane centered), then fades out into
+// the app. Rendered once on initial load (it lives in the root layout, so client
+// navigations don't re-trigger it). It's in the server HTML immediately, then
+// fades shortly after mount — returning users see it for well under ~1.5s.
 export default function Splash() {
   const [phase, setPhase] = useState<"show" | "fading" | "done">("show");
 
@@ -24,19 +24,14 @@ export default function Splash() {
   return (
     <div
       aria-hidden
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-[var(--color-bg)] transition-opacity duration-500 ease-out motion-reduce:transition-none"
+      // Solid brand gold is the instant fallback before the icon paints; the icon
+      // (gold gradient + black crane) covers the whole viewport edge-to-edge.
+      className="fixed inset-0 z-[100] bg-[var(--color-gold)] bg-cover bg-center bg-no-repeat transition-opacity duration-500 ease-out motion-reduce:transition-none"
       style={{
+        backgroundImage: "url(/icon-512.png)",
         opacity: phase === "fading" ? 0 : 1,
         pointerEvents: phase === "fading" ? "none" : "auto",
       }}
-    >
-      <div
-        className="h-32 w-32 bg-center bg-no-repeat"
-        style={{
-          backgroundImage: "url(/icon-512.png)",
-          backgroundSize: "contain",
-        }}
-      />
-    </div>
+    />
   );
 }
