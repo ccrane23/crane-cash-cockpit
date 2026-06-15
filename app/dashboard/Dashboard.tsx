@@ -62,7 +62,7 @@ export default function Dashboard({ data }: { data: DashboardData }) {
       <section className="mt-6">
         <div className="mb-3 flex items-baseline justify-between px-1">
           <p className="section-label">Spending history</p>
-          <p className="mini-label">12 months</p>
+          <p className="mini-label">monthly total</p>
         </div>
         <HistoryChart series={data.history} />
       </section>

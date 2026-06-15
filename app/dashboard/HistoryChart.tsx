@@ -8,6 +8,11 @@ import { formatMonthLabel, formatCurrencyWhole } from "@/lib/format";
 // don't clip at the edges.
 const PAD = 6;
 
+// Default to the most recent few months so they're on screen without scrolling;
+// the range toggle widens the window on demand.
+const RANGES = [4, 6, 12];
+const DEFAULT_RANGE = 4;
+
 // Compact dollar label for the trend line: "$2.1k" / "$840".
 function abbrevMoney(n: number): string {
   if (n >= 1000) return `$${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k`;
@@ -16,9 +21,9 @@ function abbrevMoney(n: number): string {
 
 export default function HistoryChart({ series }: { series: HistorySeries }) {
   const [selected, setSelected] = useState<string | null>(null);
-  const months = series.months;
-  const hasData = months.some((m) => m.total > 0);
+  const [range, setRange] = useState<number>(DEFAULT_RANGE);
 
+  const hasData = series.months.some((m) => m.total > 0);
   if (!hasData) {
     return (
       <p className="bg-[var(--color-surface)] p-5 text-sm text-[var(--color-text-secondary)]">
@@ -27,16 +32,19 @@ export default function HistoryChart({ series }: { series: HistorySeries }) {
     );
   }
 
-  const max = Math.max(...months.map((m) => m.total), 1);
-  const n = months.length;
+  // Most recent `range` months, oldest→newest. Scale to the visible window so the
+  // recent trend isn't flattened by an out-of-view peak.
+  const visible = series.months.slice(-range);
+  const max = Math.max(...visible.map((m) => m.total), 1);
+  const n = visible.length;
   // 0..100 plot box; lower y = higher spend. Headroom at top for value labels.
   const xAt = (i: number) =>
     n > 1 ? PAD + (i / (n - 1)) * (100 - 2 * PAD) : 50;
   const yAt = (total: number) => 90 - (total / max) * 74; // 16..90
-  const points = months.map((m, i) => `${xAt(i)},${yAt(m.total)}`).join(" ");
+  const points = visible.map((m, i) => `${xAt(i)},${yAt(m.total)}`).join(" ");
 
   const selectedMonth = selected
-    ? (months.find((m) => m.month === selected) ?? null)
+    ? (visible.find((m) => m.month === selected) ?? null)
     : null;
 
   function toggle(month: string) {
@@ -45,10 +53,35 @@ export default function HistoryChart({ series }: { series: HistorySeries }) {
 
   return (
     <div className="bg-[var(--color-surface)] p-5">
-      {/* Scrolls horizontally on narrow screens so 12 months stay readable. */}
+      {/* Range toggle — recent months by default, more on demand */}
+      <div className="mb-4 flex justify-end gap-1">
+        {RANGES.map((r) => {
+          const active = r === range;
+          return (
+            <button
+              key={r}
+              type="button"
+              onClick={() => {
+                setRange(r);
+                setSelected(null);
+              }}
+              aria-pressed={active}
+              className={`rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
+                active
+                  ? "border-[var(--color-brand)] text-[var(--color-brand)]"
+                  : "border-[var(--color-border)] text-[var(--color-text-tertiary)] hover:text-[var(--color-text)]"
+              }`}
+            >
+              {r}M
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Trend line. Only the 12-month view can overflow a phone, so it alone
+          scrolls; the 4/6-month views fit without scrolling. */}
       <div className="overflow-x-auto">
-        <div className="w-full" style={{ minWidth: n * 56 }}>
-          {/* Trend line */}
+        <div className="w-full" style={{ minWidth: n > 6 ? n * 56 : undefined }}>
           <div className="relative h-44">
             <svg
               className="absolute inset-0 h-full w-full"
@@ -69,7 +102,7 @@ export default function HistoryChart({ series }: { series: HistorySeries }) {
 
             {/* Dots + value labels as HTML so they don't distort with the
                 stretched (preserveAspectRatio=none) SVG. */}
-            {months.map((m, i) => {
+            {visible.map((m, i) => {
               const isSel = m.month === selected;
               return (
                 <div
@@ -107,7 +140,7 @@ export default function HistoryChart({ series }: { series: HistorySeries }) {
 
           {/* X axis — each month tappable to expand its breakdown */}
           <div className="mt-2 flex gap-1">
-            {months.map((m) => {
+            {visible.map((m) => {
               const isSel = m.month === selected;
               return (
                 <button
@@ -118,7 +151,7 @@ export default function HistoryChart({ series }: { series: HistorySeries }) {
                   className={`flex-1 rounded py-1 text-center text-[10px] tabular-nums transition-colors ${
                     isSel
                       ? "font-semibold text-[var(--color-brand)]"
-                      : "text-[var(--color-text-tertiary)] hover:text-[var(--color-detail)]"
+                      : "text-[var(--color-text)] hover:text-[var(--color-brand)]"
                   }`}
                   translate="no"
                 >
