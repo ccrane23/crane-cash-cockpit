@@ -14,6 +14,7 @@ import {
   ValidationError as WatchlistValidationError,
 } from "./watchlist.js";
 import { getQuotes } from "./prices.js";
+import { searchSymbols } from "./symbolsearch.js";
 import { getSignals } from "./signals.js";
 import { getDeepDive, getDeepDiveStats, DeepDiveError } from "./deepdive.js";
 
@@ -199,6 +200,20 @@ app.get("/signals", requireBearer, async (req, res) => {
   } catch (err) {
     console.error("[bridge] /signals failed:", err);
     res.status(502).json({ error: "signals_unavailable" });
+  }
+});
+
+// Symbol search for the add-stock autocomplete (holdings + watchlist ticker
+// fields). Proxies Finnhub /search and returns a cleaned US-equity list.
+// Never errors to the client — a failure degrades to an empty list so the UI
+// falls back to "no matches" and manual entry.
+app.get("/symbol-search", requireBearer, async (req, res) => {
+  try {
+    const results = await searchSymbols(req.query.q);
+    res.json({ results });
+  } catch (err) {
+    console.error("[bridge] /symbol-search failed:", err);
+    res.json({ results: [] });
   }
 });
 

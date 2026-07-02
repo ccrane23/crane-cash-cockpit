@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import TickerAutocomplete from "./TickerAutocomplete";
 import { formatCurrency } from "@/lib/format";
 import type { PricesData } from "@/lib/holdings";
 import type { WatchlistData, WatchlistEntry } from "@/lib/watchlist";
@@ -591,13 +592,14 @@ export default function Watchlist({
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="mini-label">Ticker</span>
-              <input
-                value={addTicker}
-                onChange={(e) => setAddTicker(e.target.value)}
-                placeholder="AAPL"
-                autoCapitalize="characters"
-                className={`mt-2 ${inputClass} uppercase`}
-              />
+              <div className="mt-2">
+                <TickerAutocomplete
+                  value={addTicker}
+                  onChange={setAddTicker}
+                  placeholder="AAPL"
+                  inputClassName={`${inputClass} uppercase`}
+                />
+              </div>
             </label>
             <label className="block">
               <span className="mini-label">Note (optional)</span>
